@@ -1,0 +1,708 @@
+// Linke Sidebar: Suche, Ansichten, Ordnerbaum, Gruppen (Tags).
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, TreeItem, ConnCard } from "../bridge.slint";
+import { IconButton, StatusDot, SectionLabel, ConnectionIcon } from "basics.slint";
+
+component SearchBox inherits Rectangle {
+    in-out property <string> text;
+    callback edited(string);
+    callback accepted(string);
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    background: Theme.bg;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent.with-alpha(70%) : Theme.border;
+    animate border-color { duration: Theme.fast; }
+
+    public function focus-input() {
+        input.focus();
+        input.select-all();
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 6px;
+        spacing: 8px;
+        Image {
+            source: Icons.search;
+            width: 14px;
+            height: 14px;
+            y: (parent.height - self.height) / 2;
+            colorize: Theme.text-faint;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                text <=> root.text;
+                color: Theme.text;
+                font-size: Theme.font-md;
+                vertical-alignment: center;
+                single-line: true;
+                selection-background-color: Theme.accent.with-alpha(40%);
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+                key-pressed(e) => {
+                    if e.text == Key.Escape {
+                        self.text = "";
+                        root.edited("");
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+            if root.text == "" : Text {
+                x: 0;
+                text: "Suchen …  (Strg+F)";
+                color: Theme.text-faint;
+                font-size: Theme.font-md;
+                vertical-alignment: center;
+                height: parent.height;
+            }
+        }
+        if root.text != "" : IconButton {
+            size: 20px;
+            icon-size: 12px;
+            icon: Icons.x;
+            y: (parent.height - self.height) / 2;
+            clicked => {
+                root.text = "";
+                root.edited("");
+            }
+        }
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <int> count: -1;
+    in property <bool> selected;
+    callback clicked();
+    height: 32px;
+    border-radius: 0;
+    background: selected ? Theme.accent-softer : ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.fast; }
+
+    // ora-Stil: Akzentleiste links am aktiven Eintrag
+    Rectangle {
+        x: 0;
+        width: 3px;
+        background: Theme.accent;
+        opacity: selected ? 1 : 0;
+        animate opacity { duration: Theme.fast; }
+    }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        Image {
+            source: icon;
+            width: 15px;
+            height: 15px;
+            y: (parent.height - self.height) / 2;
+            colorize: selected ? Theme.accent : Theme.text-muted;
+        }
+        Text {
+            text: label.to-uppercase();
+            color: selected ? Theme.text : Theme.text-muted;
+            font-size: Theme.font-sm;
+            font-weight: selected ? 600 : 500;
+            letter-spacing: 0.7px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        if count >= 0 : Text {
+            text: count;
+            color: Theme.text-faint;
+            font-size: Theme.font-sm;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component TagChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 22px;
+    width: t.preferred-width + 18px;
+    border-radius: 11px;
+    background: selected ? Theme.accent : ta.has-hover ? Theme.hover : Theme.bg;
+    border-width: selected ? 0 : 1px;
+    border-color: Theme.border;
+    t := Text {
+        text: "#" + label;
+        color: selected ? Theme.on-accent : Theme.text-muted;
+        font-size: Theme.font-xs;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Eine Zeile des Verbindungsbaums mit Kontextmenü und Drag-Quelle.
+component TreeRow inherits Rectangle {
+    in property <TreeItem> item;
+    in property <int> index;
+    in property <bool> drop-target;
+    in property <bool> being-dragged;
+    callback drag-move(int, length, length);   // Index, x, y relativ zur Zeile
+    callback drag-end(int, length, length);
+    callback drag-cancel();
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    background: drop-target ? Theme.accent-soft : ta.pressed ? Theme.active : ta.has-hover ? Theme.hover : transparent;
+    border-width: drop-target ? 1px : 0;
+    border-color: Theme.accent;
+    opacity: being-dragged ? 0.5 : 1;
+    animate background { duration: Theme.fast; }
+
+    private property <bool> dragging: false;
+
+    menu := ContextMenuArea {
+        Menu {
+            if item.kind == 1 : MenuItem {
+                title: "Verbinden";
+                activated => { Bridge.connect(item.id); }
+            }
+            if item.kind == 1 : MenuItem {
+                title: "Bearbeiten …";
+                activated => { Bridge.edit-connection(item.id); }
+            }
+            if item.kind == 1 : MenuItem {
+                title: "Duplizieren";
+                activated => { Bridge.duplicate-connection(item.id); }
+            }
+            if item.kind == 1 : MenuItem {
+                title: item.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+                activated => { Bridge.toggle-favorite(item.id); }
+            }
+            if item.kind == 1 : MenuItem {
+                title: "Als .rdp-Datei exportieren …";
+                activated => { Bridge.export-rdp(item.id); }
+            }
+            if item.kind == 1 : MenuItem {
+                title: "Löschen";
+                activated => { Bridge.delete-connection(item.id); }
+            }
+            if item.kind == 0 : MenuItem {
+                title: "Neue Verbindung hier …";
+                activated => { Bridge.new-connection(item.id); }
+            }
+            if item.kind == 0 : MenuItem {
+                title: "Neuer Unterordner …";
+                activated => { Bridge.new-folder(item.id); }
+            }
+            if item.kind == 0 : MenuItem {
+                title: "Umbenennen …";
+                activated => { Bridge.rename-folder(item.id); }
+            }
+            if item.kind == 0 : MenuItem {
+                title: "Ordner löschen";
+                activated => { Bridge.delete-folder(item.id); }
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 6px + item.depth * 16px;
+            padding-right: 8px;
+            spacing: 8px;
+
+            // Auf-/Zuklapp-Pfeil bzw. Platzhalter
+            Rectangle {
+                width: 14px;
+                if item.kind == 0 : Image {
+                    source: item.expanded ? Icons.chevron-down : Icons.chevron-right;
+                    width: 13px;
+                    height: 13px;
+                    colorize: Theme.text-faint;
+                }
+            }
+
+            if item.kind == 0 : Image {
+                source: Icons.folder;
+                width: 15px;
+                height: 15px;
+                y: (parent.height - self.height) / 2;
+                colorize: Theme.text-muted;
+            }
+            if item.kind == 1 : Rectangle {
+                width: 18px;
+                ConnectionIcon {
+                    size: 18px;
+                    icon: item.icon;
+                    tint: item.color;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: item.name;
+                    color: Theme.text;
+                    font-size: Theme.font-md;
+                    font-weight: item.kind == 0 ? 600 : 400;
+                    overflow: elide;
+                }
+            }
+
+            if item.kind == 0 : Text {
+                text: item.count;
+                color: Theme.text-faint;
+                font-size: Theme.font-xs;
+                vertical-alignment: center;
+            }
+            if item.kind == 1 && item.favorite : Image {
+                source: Icons.star;
+                width: 12px;
+                height: 12px;
+                y: (parent.height - self.height) / 2;
+                colorize: Theme.warning;
+            }
+            if item.kind == 1 && item.status >= 0 : Rectangle {
+                width: 8px;
+                StatusDot { status: item.status; size: 7px; }
+            }
+        }
+
+        ta := TouchArea {
+            mouse-cursor: dragging ? MouseCursor.grabbing : MouseCursor.default;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                    if dragging {
+                        dragging = false;
+                        root.drag-end(index, self.mouse-x, self.mouse-y);
+                    }
+                }
+                if e.kind == PointerEventKind.cancel && dragging {
+                    dragging = false;
+                    root.drag-cancel();
+                }
+            }
+            moved => {
+                if self.pressed && !dragging
+                    && (Math.abs(self.mouse-x - self.pressed-x) > 5px || Math.abs(self.mouse-y - self.pressed-y) > 5px) {
+                    dragging = true;
+                }
+                if dragging {
+                    root.drag-move(index, self.mouse-x, self.mouse-y);
+                }
+            }
+            clicked => {
+                if item.kind == 0 {
+                    Bridge.tree-toggle(item.id);
+                }
+            }
+            double-clicked => {
+                if item.kind == 1 {
+                    Bridge.connect(item.id);
+                }
+            }
+        }
+    }
+}
+
+/// Flache Zeile für Favoriten / Zuletzt verwendet / Aktiv.
+component CardRow inherits Rectangle {
+    in property <ConnCard> card;
+    height: 44px;
+    border-radius: Theme.radius-sm;
+    background: ta.pressed ? Theme.active : ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.fast; }
+
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: "Verbinden";
+                activated => { Bridge.connect(card.id); }
+            }
+            MenuItem {
+                title: "Bearbeiten …";
+                activated => { Bridge.edit-connection(card.id); }
+            }
+            MenuItem {
+                title: card.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+                activated => { Bridge.toggle-favorite(card.id); }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 10px;
+            Rectangle {
+                width: 28px;
+                ConnectionIcon { icon: card.icon; tint: card.color; size: 28px; }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 1px;
+                horizontal-stretch: 1;
+                Text {
+                    text: card.name;
+                    color: Theme.text;
+                    font-size: Theme.font-md;
+                    overflow: elide;
+                }
+                Text {
+                    text: card.last-used != "" ? card.subtitle + " · " + card.last-used : card.subtitle;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-xs;
+                    overflow: elide;
+                }
+            }
+            if card.status >= 0 : Rectangle {
+                width: 8px;
+                StatusDot { status: card.status; size: 7px; }
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            double-clicked => { Bridge.connect(card.id); }
+        }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    callback collapse();
+    callback open-settings();
+    callback drop-outside(int, length, length); // Verbindungs-ID, absolute Position
+    background: Theme.surface;
+
+    public function focus-search() {
+        search.focus-input();
+    }
+
+    private property <int> focus-token: Bridge.search-focus-request;
+    changed focus-token => { search.focus-input(); }
+
+    private property <length> row-height: 30px;
+    private property <int> drag-index: -1;
+    private property <int> drop-index: -2;   // -2 = kein Ziel, -1 = oberste Ebene
+    private property <bool> drop-outside-active: false;
+
+    VerticalLayout {
+        padding-top: 12px;
+        padding-bottom: 10px;
+        spacing: 10px;
+
+        // Kopfzeile
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 8px;
+            spacing: 10px;
+            height: 40px;
+            Image {
+                source: Icons.logo-64;
+                width: 34px;
+                height: 34px;
+                y: (parent.height - self.height) / 2;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                horizontal-stretch: 1;
+                Text {
+                    text: "REMORA";
+                    color: Theme.brand-pink;
+                    font-family: Theme.font-display;
+                    font-size: 16px;
+                    font-weight: 800;
+                    letter-spacing: 1.5px;
+                }
+                Text {
+                    text: "REMOTE DESKTOP MANAGER";
+                    color: Theme.text-muted;
+                    font-size: 8px;
+                    font-weight: 600;
+                    letter-spacing: 1.6px;
+                }
+            }
+            IconButton {
+                icon: Icons.sidebar;
+                tooltip: "Sidebar einklappen";
+                clicked => { root.collapse(); }
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            search := SearchBox {
+                text <=> Bridge.search-text;
+                edited(t) => { Bridge.search-changed(t); }
+                accepted => {
+                    if Bridge.tree.length > 0 {
+                        Bridge.tree-activate(Bridge.tree[0].kind, Bridge.tree[0].id);
+                    }
+                }
+            }
+        }
+
+        // Ansichten
+        VerticalLayout {
+            padding-left: 6px;
+            padding-right: 6px;
+            spacing: 1px;
+            NavItem {
+                icon: Icons.layers;
+                label: "Alle Verbindungen";
+                count: Bridge.connection-count;
+                selected: Bridge.sidebar-view == 0;
+                clicked => { Bridge.set-sidebar-view(0); }
+            }
+            NavItem {
+                icon: Icons.star;
+                label: "Favoriten";
+                count: Bridge.favorites.length;
+                selected: Bridge.sidebar-view == 1;
+                clicked => { Bridge.set-sidebar-view(1); }
+            }
+            NavItem {
+                icon: Icons.clock;
+                label: "Zuletzt verwendet";
+                selected: Bridge.sidebar-view == 2;
+                clicked => { Bridge.set-sidebar-view(2); }
+            }
+            NavItem {
+                icon: Icons.activity;
+                label: "Aktive Verbindungen";
+                count: Bridge.active-connections.length;
+                selected: Bridge.sidebar-view == 3;
+                clicked => { Bridge.set-sidebar-view(3); }
+            }
+        }
+
+        // Gruppen (Tags)
+        if Bridge.tags.length > 0 && Bridge.sidebar-view == 0 : VerticalLayout {
+            padding-left: 14px;
+            padding-right: 10px;
+            spacing: 6px;
+            SectionLabel { text: "GRUPPEN"; }
+            Flickable {
+                height: 24px;
+                content-width: chips.preferred-width;
+                chips := HorizontalLayout {
+                    spacing: 5px;
+                    for tag in Bridge.tags : TagChip {
+                        label: tag;
+                        selected: Bridge.selected-tag == tag;
+                        clicked => { Bridge.select-tag(Bridge.selected-tag == tag ? "" : tag); }
+                    }
+                }
+            }
+        }
+
+        // Abschnittskopf
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 8px;
+            spacing: 2px;
+            height: 24px;
+            SectionLabel {
+                text: Bridge.sidebar-view == 0 ? "VERBINDUNGEN" : Bridge.sidebar-view == 1 ? "FAVORITEN" : Bridge.sidebar-view == 2 ? "ZULETZT VERWENDET" : "AKTIVE SITZUNGEN";
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            if Bridge.sidebar-view == 0 : IconButton {
+                size: 24px;
+                icon-size: 14px;
+                icon: Icons.sort;
+                tooltip: Bridge.sort-mode == 0 ? "Nach Name sortieren" : "Nach Ordnern gruppieren";
+                active: Bridge.sort-mode == 1;
+                clicked => { Bridge.set-sort-mode(Bridge.sort-mode == 0 ? 1 : 0); }
+            }
+            if Bridge.sidebar-view == 0 : IconButton {
+                size: 24px;
+                icon-size: 14px;
+                icon: Icons.folder-plus;
+                tooltip: "Neuer Ordner";
+                clicked => { Bridge.new-folder(-1); }
+            }
+            if Bridge.sidebar-view == 0 : IconButton {
+                size: 24px;
+                icon-size: 14px;
+                icon: Icons.download;
+                tooltip: "RDP-Datei importieren";
+                clicked => { Bridge.import-rdp(); }
+            }
+        }
+
+        // Inhalt
+        Rectangle {
+            vertical-stretch: 1;
+
+            if Bridge.sidebar-view == 0 : tree-list := ListView {
+                for item[i] in Bridge.tree : HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    TreeRow {
+                        item: item;
+                        index: i;
+                        being-dragged: drag-index == i;
+                        drop-target: drop-index == i && drag-index != i;
+                        drag-move(idx, x, y) => {
+                            drag-index = idx;
+                            drop-outside-active = x > root.width - 6px;
+                            if drop-outside-active {
+                                drop-index = -2;
+                            } else {
+                                drop-index = Math.max(-1, idx + Math.floor(y / row-height));
+                                if drop-index >= Bridge.tree.length {
+                                    drop-index = -1;
+                                }
+                            }
+                        }
+                        drag-end(idx, x, y) => {
+                            if drop-outside-active {
+                                if item.kind == 1 {
+                                    root.drop-outside(item.id, self.absolute-position.x + x, self.absolute-position.y + y);
+                                }
+                            } else if drop-index != -2 && drop-index != idx {
+                                // Zielordner bestimmen
+                                if drop-index == -1 {
+                                    if item.kind == 1 { Bridge.move-connection(item.id, -1); }
+                                    else { Bridge.move-folder(item.id, -1); }
+                                } else {
+                                    if item.kind == 1 {
+                                        Bridge.move-connection(item.id, Bridge.tree[drop-index].kind == 0 ? Bridge.tree[drop-index].id : Bridge.tree[drop-index].folder);
+                                    } else {
+                                        Bridge.move-folder(item.id, Bridge.tree[drop-index].kind == 0 ? Bridge.tree[drop-index].id : Bridge.tree[drop-index].folder);
+                                    }
+                                }
+                            }
+                            drag-index = -1;
+                            drop-index = -2;
+                            drop-outside-active = false;
+                        }
+                        drag-cancel => {
+                            drag-index = -1;
+                            drop-index = -2;
+                            drop-outside-active = false;
+                        }
+                    }
+                }
+            }
+
+            if Bridge.sidebar-view == 1 : ListView {
+                for card in Bridge.favorites : HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    CardRow { card: card; }
+                }
+            }
+            if Bridge.sidebar-view == 2 : ListView {
+                for card in Bridge.recent : HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    CardRow { card: card; }
+                }
+            }
+            if Bridge.sidebar-view == 3 : ListView {
+                for card in Bridge.active-connections : HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    CardRow { card: card; }
+                }
+            }
+
+            // Leerer Zustand
+            if (Bridge.sidebar-view == 0 && Bridge.tree.length == 0) || (Bridge.sidebar-view == 1 && Bridge.favorites.length == 0)
+                || (Bridge.sidebar-view == 2 && Bridge.recent.length == 0) || (Bridge.sidebar-view == 3 && Bridge.active-connections.length == 0) : VerticalLayout {
+                alignment: start;
+                padding: 24px;
+                spacing: 6px;
+                Text {
+                    text: Bridge.search-text != "" ? "Keine Treffer" : Bridge.sidebar-view == 0 ? "Noch keine Verbindungen" : Bridge.sidebar-view == 1 ? "Keine Favoriten" : Bridge.sidebar-view == 2 ? "Noch nichts verwendet" : "Keine aktiven Sitzungen";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-md;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: Bridge.search-text != "" ? "Suchbegriff anpassen oder #tag verwenden." : Bridge.sidebar-view == 0 ? "Lege deine erste Verbindung an oder importiere eine .rdp-Datei." : "";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-sm;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // Ablagefläche "oberste Ebene" beim Ziehen
+            if drag-index >= 0 && drop-index == -1 : Rectangle {
+                y: parent.height - 34px;
+                height: 30px;
+                x: 8px;
+                width: parent.width - 16px;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.accent;
+                background: Theme.accent-softer;
+                Text {
+                    text: "Auf oberste Ebene verschieben";
+                    color: Theme.accent;
+                    font-size: Theme.font-sm;
+                }
+            }
+        }
+
+        // Fußzeile
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 8px;
+            spacing: 6px;
+            height: 34px;
+            Rectangle {
+                horizontal-stretch: 1;
+                border-radius: Theme.radius-sm;
+                background: add-ta.pressed ? Theme.accent.darker(10%) : add-ta.has-hover ? Theme.accent-hover : Theme.accent;
+                animate background { duration: Theme.fast; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 8px;
+                    Image {
+                        source: Icons.plus;
+                        width: 15px;
+                        height: 15px;
+                        y: (parent.height - self.height) / 2;
+                        colorize: Theme.on-accent;
+                    }
+                    Text {
+                        text: "Neue Verbindung";
+                        color: Theme.on-accent;
+                        font-size: Theme.font-md;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                add-ta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { Bridge.new-connection(-1); }
+                }
+            }
+            IconButton {
+                size: 34px;
+                icon: Icons.sliders;
+                tooltip: "Einstellungen";
+                clicked => { root.open-settings(); }
+            }
+        }
+    }
+
+    // Rechte Trennlinie
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.border;
+    }
+}

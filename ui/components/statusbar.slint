@@ -1,0 +1,91 @@
+// Untere Statusleiste.
+
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge } from "../bridge.slint";
+import { StatusDot } from "basics.slint";
+
+component StatusSegment inherits HorizontalLayout {
+    in property <image> icon;
+    in property <string> text;
+    in property <color> color: Theme.text-muted;
+    spacing: 6px;
+    Image {
+        source: icon;
+        width: 12px;
+        height: 12px;
+        y: (parent.height - self.height) / 2;
+        colorize: color;
+    }
+    Text {
+        text: root.text;
+        color: root.color;
+        font-size: Theme.font-xs;
+        vertical-alignment: center;
+    }
+}
+
+export component StatusBar inherits Rectangle {
+    height: 26px;
+    background: Theme.surface;
+
+    Rectangle {
+        height: 1px;
+        y: 0;
+        background: Theme.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 18px;
+
+        HorizontalLayout {
+            spacing: 7px;
+            Rectangle {
+                width: 8px;
+                StatusDot {
+                    status: Bridge.status-state < 0 ? 0 : Bridge.status-state;
+                    size: 7px;
+                }
+            }
+            Text {
+                text: Bridge.status-state < 0 ? "Keine aktive Sitzung"
+                    : Bridge.status-state == 2 ? "Verbunden"
+                    : Bridge.status-state == 1 ? "Verbindung wird hergestellt"
+                    : Bridge.status-state == 4 ? "Wiederverbindung läuft"
+                    : Bridge.status-state == 3 ? "Fehler" : "Getrennt";
+                color: Theme.text-muted;
+                font-size: Theme.font-xs;
+                vertical-alignment: center;
+            }
+        }
+
+        if Bridge.status-host != "" : StatusSegment {
+            icon: Icons.globe;
+            text: Bridge.status-host;
+        }
+
+        Text {
+            text: Bridge.status-message;
+            color: Theme.text-faint;
+            font-size: Theme.font-xs;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        if Bridge.rdp-captured : StatusSegment {
+            icon: Icons.keyboard;
+            text: "Tastatur → Remote  ·  Strg+Alt+Pos1 gibt frei";
+            color: Theme.accent;
+        }
+        if Bridge.status-resolution != "" : StatusSegment {
+            icon: Icons.monitor;
+            text: Bridge.status-resolution;
+        }
+        if Bridge.status-duration != "" : StatusSegment {
+            icon: Icons.clock;
+            text: Bridge.status-duration;
+        }
+    }
+}

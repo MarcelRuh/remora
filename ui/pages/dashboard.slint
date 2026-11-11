@@ -1,0 +1,331 @@
+// Startseite ohne aktive Sitzung: Schnellverbindung, Favoriten, zuletzt verwendet.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, ConnCard } from "../bridge.slint";
+import { ConnectionIcon, StatusDot, PrimaryButton, GhostButton, SectionLabel, DisplayTitle } from "../components/basics.slint";
+
+component QuickConnect inherits Rectangle {
+    in-out property <string> text;
+    height: 52px;
+    border-radius: Theme.radius-lg;
+    background: Theme.surface-raised;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.border;
+    drop-shadow-blur: input.has-focus ? 18px : 8px;
+    drop-shadow-color: input.has-focus ? Theme.accent.with-alpha(18%) : #00000022;
+    animate border-color, drop-shadow-blur { duration: Theme.normal; }
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 8px;
+        spacing: 12px;
+        Image {
+            source: Icons.zap;
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            colorize: Theme.accent;
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                text <=> root.text;
+                color: Theme.text;
+                font-size: Theme.font-lg;
+                vertical-alignment: center;
+                single-line: true;
+                accepted => {
+                    if self.text != "" {
+                        Bridge.quick-connect(self.text);
+                    }
+                }
+            }
+            if root.text == "" : Text {
+                x: 0;
+                height: parent.height;
+                text: "Schnellverbindung – Hostname oder IP, z. B. server01, 10.0.0.5:3390 oder admin@host";
+                color: Theme.text-faint;
+                font-size: Theme.font-lg;
+                vertical-alignment: center;
+                overflow: elide;
+                width: parent.width;
+            }
+        }
+        PrimaryButton {
+            text: "Verbinden";
+            has-icon: true;
+            icon: Icons.arrow-right;
+            enabled: root.text != "";
+            y: (parent.height - self.height) / 2;
+            clicked => { Bridge.quick-connect(root.text); }
+        }
+    }
+}
+
+component DashCard inherits Rectangle {
+    in property <ConnCard> card;
+    height: 76px;
+    border-radius: Theme.radius-lg;
+    background: ta.has-hover ? Theme.hover : Theme.surface-raised;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.border-strong : Theme.border;
+    animate background, border-color { duration: Theme.fast; }
+    drop-shadow-blur: ta.has-hover ? 24px : 0px;
+    drop-shadow-color: Theme.dark ? #00000060 : #8338ec22;
+    animate drop-shadow-blur { duration: Theme.normal; }
+
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: "Verbinden";
+                activated => { Bridge.connect(card.id); }
+            }
+            MenuItem {
+                title: "Bearbeiten …";
+                activated => { Bridge.edit-connection(card.id); }
+            }
+            MenuItem {
+                title: card.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
+                activated => { Bridge.toggle-favorite(card.id); }
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { Bridge.connect(card.id); }
+            HorizontalLayout {
+                padding: 14px;
+                spacing: 12px;
+                Rectangle {
+                    width: 36px;
+                    ConnectionIcon { icon: card.icon; tint: card.color; size: 36px; }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 3px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: card.name;
+                        color: Theme.text;
+                        font-size: Theme.font-md;
+                        font-weight: 600;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: card.subtitle;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-sm;
+                        overflow: elide;
+                    }
+                    if card.last-used != "" : Text {
+                        text: card.last-used;
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    if card.status >= 0 : StatusDot { status: card.status; size: 8px; }
+                    if card.status < 0 && card.favorite : Image {
+                        source: Icons.star;
+                        width: 13px;
+                        height: 13px;
+                        colorize: Theme.warning;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component StatTile inherits Rectangle {
+    in property <string> label;
+    in property <int> value;
+    in property <bool> highlight: false;
+    height: 84px;
+    horizontal-stretch: 1;
+    preferred-width: 120px;
+    min-width: 0px;
+    border-radius: Theme.radius;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        alignment: center;
+        spacing: 10px;
+        SectionLabel { text: root.label; }
+        Text {
+            text: root.value;
+            color: root.highlight ? Theme.success : Theme.accent;
+            font-family: Theme.font-display;
+            font-size: 24px;
+            font-weight: 800;
+        }
+    }
+}
+
+component CardGrid inherits VerticalLayout {
+    in property <string> title;
+    in property <[ConnCard]> cards;
+    in property <length> available-width;
+    private property <int> columns: Math.max(1, Math.floor((available-width + 12px) / 292px));
+    private property <length> card-width: (available-width - (columns - 1) * 12px) / columns;
+    spacing: 10px;
+    SectionLabel { text: title; }
+    Rectangle {
+        height: Math.ceil(cards.length / columns) * 88px - 12px;
+        for card[i] in cards : DashCard {
+            card: card;
+            width: card-width;
+            x: Math.mod(i, columns) * (card-width + 12px);
+            y: Math.floor(i / columns) * 88px;
+        }
+    }
+}
+
+export component Dashboard inherits Rectangle {
+    background: Theme.bg;
+    private property <string> quick-text;
+
+    public function focus-quick-connect() {
+        qc.focus-input();
+    }
+
+    private property <int> focus-token: Bridge.quick-focus-request;
+    changed focus-token => { qc.focus-input(); }
+
+    ScrollView {
+        VerticalLayout {
+            padding-left: Math.max(32px, (root.width - 1040px) / 2);
+            padding-right: Math.max(32px, (root.width - 1040px) / 2);
+            padding-top: 48px;
+            padding-bottom: 40px;
+            spacing: 28px;
+            alignment: start;
+
+            VerticalLayout {
+                spacing: 8px;
+                SectionLabel { text: "ÜBERSICHT"; }
+                DisplayTitle { text: "Remote-Verbindungen"; }
+                Text {
+                    text: Bridge.tabs.length == 0 ? "Keine aktiven Sitzungen. Wähle eine Verbindung oder verbinde dich direkt."
+                        : Bridge.tabs.length == 1 ? "1 Sitzung geöffnet." : Bridge.tabs.length + " Sitzungen geöffnet.";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-md;
+                }
+            }
+
+            qc := QuickConnect { text <=> quick-text; }
+
+            // Kennzahlen (wie die Statuskacheln in Proxora)
+            HorizontalLayout {
+                spacing: 12px;
+                StatTile { label: "VERBINDUNGEN"; value: Bridge.connection-count; }
+                StatTile { label: "AKTIV"; value: Bridge.active-connections.length; highlight: Bridge.active-connections.length > 0; }
+                StatTile { label: "FAVORITEN"; value: Bridge.favorites.length; }
+                StatTile { label: "OFFENE TABS"; value: Bridge.tabs.length; }
+            }
+
+            if Bridge.active-connections.length > 0 : CardGrid {
+                title: "AKTIVE SITZUNGEN";
+                cards: Bridge.active-connections;
+                available-width: root.width - 2 * Math.max(32px, (root.width - 1040px) / 2);
+            }
+            if Bridge.favorites.length > 0 : CardGrid {
+                title: "FAVORITEN";
+                cards: Bridge.favorites;
+                available-width: root.width - 2 * Math.max(32px, (root.width - 1040px) / 2);
+            }
+            if Bridge.recent.length > 0 : CardGrid {
+                title: "ZULETZT VERWENDET";
+                cards: Bridge.recent;
+                available-width: root.width - 2 * Math.max(32px, (root.width - 1040px) / 2);
+            }
+
+            if Bridge.connection-count == 0 : Rectangle {
+                height: 180px;
+                border-radius: Theme.radius-lg;
+                border-width: 1px;
+                border-color: Theme.border;
+                background: Theme.surface;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 14px;
+                    Text {
+                        text: "Willkommen bei Remora";
+                        color: Theme.text;
+                        font-size: Theme.font-xl;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: "Lege Verbindungen an, organisiere sie in Ordnern und öffne mehrere Sitzungen parallel – in Tabs oder nebeneinander.";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-md;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 10px;
+                        PrimaryButton {
+                            text: "Neue Verbindung";
+                            has-icon: true;
+                            icon: Icons.plus;
+                            clicked => { Bridge.new-connection(-1); }
+                        }
+                        GhostButton {
+                            text: ".rdp importieren";
+                            has-icon: true;
+                            icon: Icons.download;
+                            clicked => { Bridge.import-rdp(); }
+                        }
+                    }
+                }
+            }
+
+            // Tastenkürzel-Hinweise
+            HorizontalLayout {
+                spacing: 18px;
+                alignment: start;
+                for hint in [
+                    { key: "Strg+T", text: "Neuer Tab" },
+                    { key: "Strg+W", text: "Tab schließen" },
+                    { key: "Strg+Tab", text: "Nächster Tab" },
+                    { key: "Strg+F", text: "Suchen" },
+                    { key: "F11", text: "Vollbild" },
+                ] : HorizontalLayout {
+                    spacing: 6px;
+                    Rectangle {
+                        width: k.preferred-width + 12px;
+                        height: 20px;
+                        border-radius: Theme.radius-xs;
+                        background: Theme.surface-raised;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        k := Text {
+                            text: hint.key;
+                            color: Theme.text-muted;
+                            font-size: Theme.font-xs;
+                            font-weight: 600;
+                        }
+                    }
+                    Text {
+                        text: hint.text;
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

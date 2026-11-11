@@ -1,0 +1,260 @@
+// Obere Tab-Leiste: eine Registerkarte pro Sitzung, sortierbar per Drag & Drop.
+
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, TabItem } from "../bridge.slint";
+import { IconButton, StatusDot } from "basics.slint";
+
+component SessionTab inherits Rectangle {
+    in property <TabItem> tab;
+    in property <int> index;
+    in property <bool> selected;
+    in property <bool> drop-before;
+    callback drag-move(int, length, length);
+    callback drag-end(int, length, length);
+    height: 34px;
+    border-radius: Theme.radius-sm;
+    background: selected ? Theme.surface-raised : ta.has-hover ? Theme.hover : transparent;
+    border-width: selected ? 1px : 0;
+    border-color: Theme.border;
+    animate background { duration: Theme.fast; }
+    private property <bool> dragging;
+    opacity: dragging ? 0.6 : 1;
+
+    // Einfügemarke beim Sortieren
+    if drop-before : Rectangle {
+        x: -3px;
+        width: 2px;
+        height: parent.height - 8px;
+        y: 4px;
+        background: Theme.accent;
+        border-radius: 1px;
+    }
+
+    ContextMenuArea {
+        Menu {
+            MenuItem {
+                title: "Neu verbinden";
+                activated => { Bridge.reconnect-session(tab.session-id); }
+            }
+            MenuItem {
+                title: "Trennen";
+                activated => { Bridge.disconnect-session(tab.session-id); }
+            }
+            MenuItem {
+                title: "Strg+Alt+Entf senden";
+                activated => { Bridge.send-ctrl-alt-del(tab.session-id); }
+            }
+            MenuItem {
+                title: "Tab schließen";
+                activated => { Bridge.close-tab(index); }
+            }
+        }
+
+        ta := TouchArea {
+            mouse-cursor: dragging ? MouseCursor.grabbing : MouseCursor.default;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                    Bridge.activate-tab(index);
+                }
+                if e.kind == PointerEventKind.up && e.button == PointerEventButton.middle {
+                    Bridge.close-tab(index);
+                }
+                if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && dragging {
+                    dragging = false;
+                    root.drag-end(index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+                if e.kind == PointerEventKind.cancel {
+                    dragging = false;
+                }
+            }
+            moved => {
+                if self.pressed && !dragging && (Math.abs(self.mouse-x - self.pressed-x) > 6px || Math.abs(self.mouse-y - self.pressed-y) > 6px) {
+                    dragging = true;
+                }
+                if dragging {
+                    root.drag-move(index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 4px;
+                spacing: 8px;
+                Rectangle {
+                    width: 16px;
+                    Image {
+                        source: Icons.for-name(tab.icon);
+                        width: 15px;
+                        height: 15px;
+                        colorize: selected ? tab.color : Theme.text-muted;
+                    }
+                    Rectangle {
+                        x: 10px;
+                        y: parent.height / 2 + 1px;
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: selected ? Theme.surface-raised : Theme.surface;
+                        StatusDot {
+                            status: tab.status;
+                            size: 6px;
+                        }
+                    }
+                }
+                Text {
+                    text: tab.name;
+                    color: selected ? Theme.text : Theme.text-muted;
+                    font-size: Theme.font-md;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                IconButton {
+                    size: 22px;
+                    icon-size: 12px;
+                    icon: Icons.x;
+                    y: (parent.height - self.height) / 2;
+                    opacity: (selected || ta.has-hover) ? 1 : 0;
+                    tooltip: "Schließen (Strg+W)";
+                    clicked => { Bridge.close-tab(index); }
+                }
+            }
+        }
+    }
+}
+
+export component TabBar inherits Rectangle {
+    in property <bool> sidebar-collapsed;
+    callback expand-sidebar();
+    callback new-tab();
+    callback drop-on-content(int, length, length); // Sitzungs-ID, absolute Position
+    height: 44px;
+    background: Theme.surface;
+
+    private property <length> tab-width: Math.max(110px, Math.min(220px, (tabs-area.width - 40px) / Math.max(1, Bridge.tabs.length)));
+    private property <int> drop-target: -1;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        spacing: 4px;
+
+        if sidebar-collapsed : IconButton {
+            icon: Icons.sidebar;
+            tooltip: "Sidebar anzeigen";
+            y: (parent.height - self.height) / 2;
+            clicked => { root.expand-sidebar(); }
+        }
+
+        // Start / Dashboard
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            border-radius: Theme.radius-sm;
+            background: Bridge.active-tab == -1 ? Theme.surface-raised : home-ta.has-hover ? Theme.hover : transparent;
+            border-width: Bridge.active-tab == -1 ? 1px : 0;
+            border-color: Theme.border;
+            Image {
+                source: Icons.layers;
+                width: 16px;
+                height: 16px;
+                colorize: Bridge.active-tab == -1 ? Theme.accent : Theme.text-muted;
+            }
+            home-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Bridge.activate-tab(-1); }
+            }
+        }
+
+        tabs-area := Rectangle {
+            horizontal-stretch: 1;
+            clip: true;
+            Rectangle {
+                for tab[i] in Bridge.tabs : SessionTab {
+                    x: i * (tab-width + 4px);
+                    y: (parent.height - self.height) / 2;
+                    width: tab-width;
+                    tab: tab;
+                    index: i;
+                    selected: Bridge.active-tab == i;
+                    drop-before: drop-target == i;
+                    drag-move(idx, ax, ay) => {
+                        if ay > root.absolute-position.y + root.height {
+                            drop-target = -1;
+                        } else {
+                            drop-target = Math.max(0, Math.min(Bridge.tabs.length - 1,
+                                Math.floor((ax - tabs-area.absolute-position.x) / (tab-width + 4px))));
+                        }
+                    }
+                    drag-end(idx, ax, ay) => {
+                        if ay > root.absolute-position.y + root.height {
+                            root.drop-on-content(tab.session-id, ax, ay);
+                        } else if drop-target >= 0 && drop-target != idx {
+                            Bridge.move-tab(idx, drop-target);
+                        }
+                        drop-target = -1;
+                    }
+                }
+                IconButton {
+                    x: Bridge.tabs.length * (tab-width + 4px);
+                    icon: Icons.plus;
+                    tooltip: "Neuer Tab (Strg+T)";
+                    y: (parent.height - self.height) / 2;
+                    clicked => { root.new-tab(); }
+                }
+            }
+        }
+
+        // Layout-Umschalter
+        Rectangle {
+            width: layout-row.preferred-width;
+            layout-row := HorizontalLayout {
+                spacing: 2px;
+                alignment: center;
+                IconButton {
+                    icon: Icons.layout-single;
+                    tooltip: "Einzelansicht";
+                    active: Bridge.layout-mode == 0;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Bridge.set-layout(0); }
+                }
+                IconButton {
+                    icon: Icons.layout-columns;
+                    tooltip: "Nebeneinander";
+                    active: Bridge.layout-mode == 1;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Bridge.set-layout(1); }
+                }
+                IconButton {
+                    icon: Icons.layout-rows;
+                    tooltip: "Übereinander";
+                    active: Bridge.layout-mode == 2;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Bridge.set-layout(2); }
+                }
+                IconButton {
+                    icon: Icons.layout-grid;
+                    tooltip: "2 × 2";
+                    active: Bridge.layout-mode == 3;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Bridge.set-layout(3); }
+                }
+                Rectangle { width: 6px; }
+                IconButton {
+                    icon: Bridge.fullscreen ? Icons.minimize : Icons.maximize;
+                    tooltip: "Vollbild (F11)";
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Bridge.toggle-fullscreen(); }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+}

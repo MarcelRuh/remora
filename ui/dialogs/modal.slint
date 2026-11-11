@@ -1,0 +1,107 @@
+// Basis für modale Dialoge: abgedunkelter Hintergrund + zentrierte Karte.
+
+import { Theme, Icons } from "../themes/theme.slint";
+import { IconButton } from "../components/basics.slint";
+
+export component Modal inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <length> dialog-width: 460px;
+    in property <length> max-dialog-height: 10000px;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <color> icon-color: Theme.accent;
+    callback close-requested();
+    background: Theme.overlay;
+
+    // Klicks auf den Hintergrund nicht durchreichen
+    TouchArea {}
+
+    FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape {
+                root.close-requested();
+                return accept;
+            }
+            return reject;
+        }
+
+        card := Rectangle {
+            width: Math.min(dialog-width, root.width - 32px);
+            height: Math.min(layout.preferred-height, root.height - 48px, max-dialog-height);
+            background: Theme.surface-raised;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-offset-y: Theme.dark ? 0px : 12px;
+            drop-shadow-color: Theme.dark ? #8338ec40 : #14102440;
+            clip: true;
+
+            layout := VerticalLayout {
+                HorizontalLayout {
+                    padding-left: 22px;
+                    padding-right: 12px;
+                    padding-top: 18px;
+                    padding-bottom: 6px;
+                    spacing: 12px;
+                    if has-icon : Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: Theme.radius;
+                        background: icon-color.with-alpha(15%);
+                        Image {
+                            source: icon;
+                            width: 17px;
+                            height: 17px;
+                            colorize: icon-color;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 3px;
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text {
+                            text: title;
+                            color: Theme.text;
+                            font-size: Theme.font-lg;
+                            font-weight: 650;
+                        }
+                        if subtitle != "" : Text {
+                            text: subtitle;
+                            color: Theme.text-muted;
+                            font-size: Theme.font-sm;
+                            wrap: word-wrap;
+                        }
+                    }
+                    IconButton {
+                        icon: Icons.x;
+                        tooltip: "Schließen (Esc)";
+                        clicked => { root.close-requested(); }
+                    }
+                }
+                @children
+            }
+        }
+    }
+}
+
+/// Fußzeile mit rechtsbündigen Aktionen.
+export component DialogFooter inherits Rectangle {
+    background: Theme.surface;
+    height: 60px;
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.border;
+    }
+    HorizontalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        spacing: 10px;
+        alignment: end;
+        @children
+    }
+}

@@ -1,0 +1,91 @@
+// In das Design integrierte Fenster-Titelleiste (Windows).
+//
+// Ziehen, Doppelklick-Maximieren, Aero Snap und das Systemmenü übernimmt Windows selbst:
+// Die Fläche links der Fenster-Buttons meldet der Fenster-Hook (src/app/titlebar.rs) als
+// Beschriftungsbereich (HTCAPTION). Breite der Buttons und Höhe müssen zu den Konstanten
+// dort passen.
+
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge } from "../bridge.slint";
+
+component CaptionButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> is-close: false;
+    callback clicked();
+    width: 46px;
+    background: ta.pressed ? (is-close ? #b4271a : Theme.text.with-alpha(14%))
+        : ta.has-hover ? (is-close ? #c42b1c : Theme.text.with-alpha(8%)) : transparent;
+    Image {
+        source: icon;
+        width: 10px;
+        height: 10px;
+        colorize: (is-close && ta.has-hover) ? #ffffff : Bridge.window-active ? Theme.text : Theme.text-faint;
+    }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+export component TitleBar inherits Rectangle {
+    in property <string> subtitle;
+    height: 34px;
+    background: Theme.surface;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        spacing: 8px;
+        Image {
+            source: Icons.logo-32;
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            opacity: Bridge.window-active ? 1 : 0.6;
+        }
+        Text {
+            text: "REMORA";
+            color: Bridge.window-active ? Theme.brand-pink : Theme.text-faint;
+            font-family: Theme.font-display;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.4px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: "RDP";
+            color: Theme.text-faint;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
+            vertical-alignment: center;
+        }
+        if subtitle != "" : Text {
+            text: "·  " + subtitle;
+            color: Theme.text-faint;
+            font-size: Theme.font-sm;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        HorizontalLayout {
+            CaptionButton {
+                icon: Icons.win-minimize;
+                clicked => { Bridge.window-minimize(); }
+            }
+            CaptionButton {
+                icon: Bridge.window-maximized ? Icons.win-restore : Icons.win-maximize;
+                clicked => { Bridge.window-toggle-maximize(); }
+            }
+            CaptionButton {
+                icon: Icons.win-close;
+                is-close: true;
+                clicked => { Bridge.window-close(); }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.border;
+    }
+}

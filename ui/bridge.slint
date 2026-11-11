@@ -1,0 +1,278 @@
+// Schnittstelle zwischen UI und Rust-Backend: Datenmodelle und Callbacks.
+
+export struct TreeItem {
+    kind: int,          // 0 = Ordner, 1 = Verbindung
+    id: int,
+    depth: int,
+    name: string,
+    subtitle: string,
+    expanded: bool,
+    count: int,
+    color: color,
+    icon: string,
+    favorite: bool,
+    status: int,        // Sitzungsstatus (siehe Theme.status-color), -1 = keine Sitzung
+    folder: int,        // Elternordner (-1 = oberste Ebene)
+}
+
+export struct ConnCard {
+    id: int,
+    name: string,
+    host: string,
+    subtitle: string,
+    color: color,
+    icon: string,
+    favorite: bool,
+    last-used: string,
+    status: int,
+}
+
+export struct TabItem {
+    session-id: int,
+    name: string,
+    host: string,
+    status: int,
+    status-text: string,
+    color: color,
+    icon: string,
+}
+
+export struct PaneItem {
+    session-id: int,      // -1 = leerer Bereich
+    name: string,
+    host: string,
+    status: int,
+    status-text: string,
+    frame: image,
+    has-frame: bool,
+    remote-width: int,
+    remote-height: int,
+    scale-mode: int,      // 0 einpassen, 1 Original, 2 strecken
+    cursor-mode: int,     // 0 Standard, 1 versteckt, 2 Bitmap
+    cursor: image,
+    cursor-width: int,
+    cursor-height: int,
+    cursor-hotspot-x: int,
+    cursor-hotspot-y: int,
+    can-reconnect: bool,
+}
+
+export struct FolderOption {
+    id: int,
+    label: string,
+}
+
+export struct EditorData {
+    id: int,
+    name: string,
+    host: string,
+    port: string,
+    username: string,
+    domain: string,
+    password: string,
+    password-stored: bool,
+    password-action: int,   // 0 behalten, 1 setzen, 2 entfernen
+    description: string,
+    folder-index: int,
+    tags: string,
+    color: color,
+    icon: string,
+    favorite: bool,
+    resolution-index: int,  // 0 = an Fenster anpassen, sonst Index in Liste
+    custom-width: string,
+    custom-height: string,
+    color-depth-index: int, // 0=32, 1=24, 2=16, 3=15
+    scale-mode: int,
+    fullscreen: bool,
+    clipboard: bool,
+    audio: bool,
+    printers: bool,
+    drives: bool,
+    nla: bool,
+    admin-session: bool,
+    auto-reconnect-index: int, // 0 global, 1 an, 2 aus
+    gateway-enabled: bool,
+    gateway-host: string,
+    gateway-username: string,
+    gateway-password: string,
+    gateway-password-stored: bool,
+    gateway-bypass: bool,
+    custom-properties: string,
+}
+
+export struct SettingsData {
+    theme: int,              // 0 dunkel, 1 hell, 2 System
+    accent: color,
+    scale-mode: int,
+    resolution-index: int,
+    auto-reconnect: bool,
+    reconnect-attempts: int,
+    connect-timeout: int,
+    open-behavior: int,      // 0 vorhandenen Tab, 1 immer neu
+    confirm-close: bool,
+    autostart: bool,
+    windows-keys: int,       // 0 immer, 1 nur Vollbild, 2 nie
+}
+
+export struct KnownHostItem {
+    endpoint: string,
+    fingerprint: string,
+    first-seen: string,
+}
+
+export struct Toast {
+    message: string,
+    kind: int,   // 0 Info, 1 Erfolg, 2 Warnung, 3 Fehler
+    visible: bool,
+}
+
+export global Bridge {
+    // ----------------------------------------------------------- Daten
+    in-out property <[TreeItem]> tree;
+    in-out property <[ConnCard]> favorites;
+    in-out property <[ConnCard]> recent;
+    in-out property <[ConnCard]> active-connections;
+    in-out property <[string]> tags;
+    in-out property <[TabItem]> tabs;
+    in-out property <[PaneItem]> panes;
+    in-out property <[string]> folder-labels;   // Index 0 = "(Kein Ordner)"
+    in-out property <[string]> resolution-options;
+    in-out property <[KnownHostItem]> known-hosts;
+    in-out property <int> active-tab: -1;      // Index in `tabs`, -1 = Dashboard
+    in-out property <int> layout-mode: 0;      // 0 einzeln, 1 nebeneinander, 2 übereinander, 3 2×2
+    in-out property <int> focused-pane: 0;
+    in-out property <int> sidebar-view: 0;     // 0 alle, 1 Favoriten, 2 zuletzt, 3 aktiv
+    in-out property <int> sort-mode: 0;        // 0 Ordner, 1 Name
+    in-out property <string> search-text;
+    in-out property <string> selected-tag;
+    in-out property <int> connection-count;
+    in-out property <Toast> toast;
+    in-out property <string> status-message;
+    in-out property <string> status-host;
+    in-out property <string> status-resolution;
+    in-out property <string> status-duration;
+    in-out property <int> status-state: -1;
+    in-out property <string> version;
+    in-out property <string> backend-info;
+    in-out property <string> data-path;
+    in-out property <bool> fullscreen;
+    in-out property <bool> fullscreen-hint;
+    in-out property <bool> custom-titlebar;    // eigene Titelleiste aktiv (Windows)
+    in-out property <bool> window-maximized;
+    in-out property <bool> window-active: true;
+    in-out property <bool> rdp-captured;   // Tastatur wird an Remote-Sitzung geleitet
+    in-out property <int> focus-request;          // Zähler: Fokus auf Bereich `focus-request-pane` legen
+    in-out property <int> focus-request-pane;
+    in-out property <int> quick-focus-request;    // Zähler: Schnellverbindung fokussieren
+    in-out property <int> search-focus-request;
+
+    // ----------------------------------------------------------- Verbindungen
+    callback search-changed(string);
+    callback tree-activate(int, int);          // kind, id (Doppelklick/Enter)
+    callback tree-toggle(int);                 // Ordner auf-/zuklappen
+    callback connect(int);                     // Verbindung öffnen
+    callback connect-in-pane(int, int);        // Verbindung in Bereich öffnen
+    callback quick-connect(string);
+    callback new-connection(int);              // Ordner-ID (-1 = keiner)
+    callback edit-connection(int);
+    callback duplicate-connection(int);
+    callback delete-connection(int);
+    callback toggle-favorite(int);
+    callback move-connection(int, int);        // Verbindung, Ordner (-1 = oberste Ebene)
+    callback move-folder(int, int);            // Ordner, neuer Elternordner (-1)
+    callback new-folder(int);                  // Elternordner (-1)
+    callback rename-folder(int);
+    callback delete-folder(int);
+    callback export-rdp(int);
+    callback import-rdp();
+    callback set-sidebar-view(int);
+    callback set-sort-mode(int);
+    callback select-tag(string);
+
+    // ----------------------------------------------------------- Sitzungen
+    callback activate-tab(int);
+    callback close-tab(int);
+    callback move-tab(int, int);
+    callback next-tab(int);                    // +1 / -1
+    callback disconnect-session(int);
+    callback reconnect-session(int);
+    callback set-layout(int);
+    callback assign-pane(int, int);            // Bereich, Sitzungs-ID
+    callback maximize-pane(int);
+    callback focus-pane(int);
+    callback pane-geometry(int, length, length); // Bereich, Breite, Höhe
+    callback pane-pointer(int, int, int, length, length, length, length); // Bereich, Art, Taste, x, y, w, h
+    callback pane-scroll(int, length, length);
+    callback pane-capture(int, bool);          // Tastaturfokus erhalten/verloren
+    callback send-ctrl-alt-del(int);
+    callback toggle-fullscreen();
+    callback window-minimize();
+    callback window-toggle-maximize();
+    callback window-close();
+    callback set-scale-mode(int, int);         // Sitzung, Modus
+
+    // ----------------------------------------------------------- Dialoge
+    callback editor-save(EditorData) -> string;  // leerer String = OK, sonst Fehlermeldung
+    callback credentials-submit(string, string, string, bool); // Benutzer, Domäne, Passwort, speichern
+    callback credentials-cancel();
+    callback certificate-decision(int);        // 0 abbrechen, 1 einmalig, 2 immer
+    callback confirm-accept();
+    callback confirm-cancel();
+    callback text-dialog-accept(string);
+    callback text-dialog-cancel();
+    callback vault-accept(string);
+    callback vault-cancel();
+
+    // ----------------------------------------------------------- Einstellungen
+    callback settings-changed(SettingsData);
+    callback export-config(bool);              // true = verschlüsselt mit Passwörtern
+    callback import-config();
+    callback forget-known-host(string);
+    callback open-data-folder();
+    callback dismiss-toast();
+}
+
+// Zustand der modalen Dialoge (wird von Rust gesetzt).
+export global Dialogs {
+    in-out property <bool> editor-open;
+    in-out property <string> editor-title;
+    in-out property <EditorData> editor;
+    in-out property <string> editor-error;
+
+    in-out property <bool> credentials-open;
+    in-out property <string> credentials-title;
+    in-out property <string> credentials-host;
+    in-out property <string> credentials-user;
+    in-out property <string> credentials-domain;
+    in-out property <string> credentials-error;
+    in-out property <bool> credentials-can-save: true;
+
+    in-out property <bool> certificate-open;
+    in-out property <string> cert-endpoint;
+    in-out property <string> cert-fingerprint;
+    in-out property <string> cert-previous;
+    in-out property <string> cert-reason;
+    in-out property <bool> cert-changed;
+
+    in-out property <bool> confirm-open;
+    in-out property <string> confirm-title;
+    in-out property <string> confirm-message;
+    in-out property <string> confirm-action;
+    in-out property <bool> confirm-danger;
+
+    in-out property <bool> text-open;
+    in-out property <string> text-title;
+    in-out property <string> text-label;
+    in-out property <string> text-value;
+    in-out property <string> text-action;
+
+    in-out property <bool> vault-open;
+    in-out property <string> vault-title;
+    in-out property <string> vault-message;
+    in-out property <bool> vault-confirm;
+    in-out property <string> vault-error;
+
+    in-out property <bool> settings-open;
+    in-out property <int> settings-section;
+    in-out property <SettingsData> settings;
+}

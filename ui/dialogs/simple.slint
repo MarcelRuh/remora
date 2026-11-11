@@ -1,0 +1,288 @@
+﻿// Kleinere Dialoge: Anmeldung, Zertifikat, Bestätigung, Texteingabe, Master-Passwort.
+
+import { LineEdit } from "std-widgets.slint";
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, Dialogs } from "../bridge.slint";
+import { Field, PrimaryButton, GhostButton, FieldLabel, CheckField } from "../components/basics.slint";
+import { Modal, DialogFooter } from "modal.slint";
+
+export component CredentialsDialog inherits Modal {
+    title: Dialogs.credentials-title;
+    subtitle: Dialogs.credentials-host;
+    has-icon: true;
+    icon: Icons.lock;
+    dialog-width: 420px;
+    private property <string> user: Dialogs.credentials-user;
+    private property <string> domain: Dialogs.credentials-domain;
+    private property <string> password;
+    private property <bool> save: false;
+    close-requested => {
+        password = "";
+        Bridge.credentials-cancel();
+    }
+    init => {
+        if user == "" { u.focus-input(); } else { p.focus-input(); }
+    }
+
+    VerticalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 10px;
+        padding-bottom: 18px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 10px;
+            u := Field {
+                label: "Benutzername";
+                text <=> user;
+                horizontal-stretch: 2;
+            }
+            Field {
+                label: "Domäne";
+                placeholder: "optional";
+                text <=> domain;
+                horizontal-stretch: 1;
+            }
+        }
+        p := Field {
+            label: "Passwort";
+            password: true;
+            text <=> password;
+            accepted => {
+                Bridge.credentials-submit(user, domain, password, save);
+                password = "";
+            }
+        }
+        if Dialogs.credentials-can-save : CheckField {
+            text: "Passwort sicher im Windows Credential Manager speichern";
+            checked <=> save;
+        }
+        if Dialogs.credentials-error != "" : Text {
+            text: Dialogs.credentials-error;
+            color: Theme.danger;
+            font-size: Theme.font-sm;
+            wrap: word-wrap;
+        }
+    }
+    DialogFooter {
+        GhostButton {
+            text: "Abbrechen";
+            clicked => {
+                password = "";
+                Bridge.credentials-cancel();
+            }
+        }
+        PrimaryButton {
+            text: "Verbinden";
+            enabled: user != "";
+            clicked => {
+                Bridge.credentials-submit(user, domain, password, save);
+                password = "";
+            }
+        }
+    }
+}
+
+export component CertificateDialog inherits Modal {
+    title: Dialogs.cert-changed ? "Zertifikat hat sich geändert!" : "Unbekanntes Serverzertifikat";
+    subtitle: Dialogs.cert-endpoint;
+    has-icon: true;
+    icon: Dialogs.cert-changed ? Icons.alert : Icons.shield;
+    icon-color: Dialogs.cert-changed ? Theme.danger : Theme.warning;
+    dialog-width: 560px;
+    close-requested => { Bridge.certificate-decision(0); }
+
+    VerticalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 10px;
+        padding-bottom: 18px;
+        spacing: 12px;
+        Text {
+            text: Dialogs.cert-changed
+                ? "Der Server präsentiert ein anderes Zertifikat als bei der letzten Verbindung. Das kann auf eine Neuinstallation hindeuten – oder auf einen Angriff (Man-in-the-Middle). Verbinde dich nur, wenn du die Änderung bestätigen kannst."
+                : "Die Identität des Servers konnte nicht über eine vertrauenswürdige Zertifizierungsstelle bestätigt werden. Bei RDP-Servern mit selbst signiertem Zertifikat ist das üblich. Vergleiche den Fingerabdruck mit dem Zertifikat des Servers.";
+            color: Theme.text-muted;
+            font-size: Theme.font-sm;
+            wrap: word-wrap;
+        }
+        VerticalLayout {
+            spacing: 4px;
+            FieldLabel { text: "SHA-256-Fingerabdruck"; }
+            Rectangle {
+                background: Theme.bg;
+                border-radius: Theme.radius-sm;
+                border-width: 1px;
+                border-color: Theme.border;
+                height: fp.preferred-height + 16px;
+                fp := Text {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    text: Dialogs.cert-fingerprint;
+                    color: Theme.text;
+                    font-family: "Cascadia Mono";
+                    font-size: Theme.font-sm;
+                    wrap: char-wrap;
+                }
+            }
+        }
+        if Dialogs.cert-changed : VerticalLayout {
+            spacing: 4px;
+            FieldLabel { text: "Bisher gespeicherter Fingerabdruck"; }
+            Text {
+                text: Dialogs.cert-previous;
+                color: Theme.text-faint;
+                font-family: "Cascadia Mono";
+                font-size: Theme.font-sm;
+                wrap: char-wrap;
+            }
+        }
+        Text {
+            text: "Grund: " + Dialogs.cert-reason;
+            color: Theme.text-faint;
+            font-size: Theme.font-xs;
+            wrap: word-wrap;
+        }
+    }
+    DialogFooter {
+        GhostButton {
+            text: "Abbrechen";
+            clicked => { Bridge.certificate-decision(0); }
+        }
+        GhostButton {
+            text: "Nur dieses Mal";
+            clicked => { Bridge.certificate-decision(1); }
+        }
+        PrimaryButton {
+            text: Dialogs.cert-changed ? "Neues Zertifikat vertrauen" : "Vertrauen & merken";
+            danger: Dialogs.cert-changed;
+            clicked => { Bridge.certificate-decision(2); }
+        }
+    }
+}
+
+export component ConfirmDialog inherits Modal {
+    title: Dialogs.confirm-title;
+    has-icon: true;
+    icon: Dialogs.confirm-danger ? Icons.alert : Icons.info;
+    icon-color: Dialogs.confirm-danger ? Theme.danger : Theme.accent;
+    dialog-width: 440px;
+    close-requested => { Bridge.confirm-cancel(); }
+    VerticalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 8px;
+        padding-bottom: 20px;
+        Text {
+            text: Dialogs.confirm-message;
+            color: Theme.text-muted;
+            font-size: Theme.font-md;
+            wrap: word-wrap;
+        }
+    }
+    DialogFooter {
+        GhostButton {
+            text: "Abbrechen";
+            clicked => { Bridge.confirm-cancel(); }
+        }
+        PrimaryButton {
+            text: Dialogs.confirm-action;
+            danger: Dialogs.confirm-danger;
+            clicked => { Bridge.confirm-accept(); }
+        }
+    }
+}
+
+export component TextInputDialog inherits Modal {
+    title: Dialogs.text-title;
+    dialog-width: 400px;
+    private property <string> value: Dialogs.text-value;
+    close-requested => { Bridge.text-dialog-cancel(); }
+    init => { f.focus-input(); }
+    VerticalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 10px;
+        padding-bottom: 18px;
+        f := Field {
+            label: Dialogs.text-label;
+            text <=> value;
+            accepted => { Bridge.text-dialog-accept(value); }
+        }
+    }
+    DialogFooter {
+        GhostButton {
+            text: "Abbrechen";
+            clicked => { Bridge.text-dialog-cancel(); }
+        }
+        PrimaryButton {
+            text: Dialogs.text-action;
+            enabled: value != "";
+            clicked => { Bridge.text-dialog-accept(value); }
+        }
+    }
+}
+
+export component VaultDialog inherits Modal {
+    title: Dialogs.vault-title;
+    subtitle: Dialogs.vault-message;
+    has-icon: true;
+    icon: Icons.lock;
+    dialog-width: 440px;
+    private property <string> pw;
+    private property <string> pw2;
+    close-requested => {
+        pw = "";
+        pw2 = "";
+        Bridge.vault-cancel();
+    }
+    init => { a.focus-input(); }
+    VerticalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 10px;
+        padding-bottom: 18px;
+        spacing: 12px;
+        a := Field {
+            label: "Master-Passwort";
+            password: true;
+            text <=> pw;
+            hint: Dialogs.vault-confirm ? "Mindestens 8 Zeichen. Ohne dieses Passwort kann der Export nicht wiederhergestellt werden." : "";
+        }
+        if Dialogs.vault-confirm : Field {
+            label: "Passwort wiederholen";
+            password: true;
+            text <=> pw2;
+        }
+        if Dialogs.vault-confirm && pw2 != "" && pw != pw2 : Text {
+            text: "Die Passwörter stimmen nicht überein.";
+            color: Theme.danger;
+            font-size: Theme.font-sm;
+        }
+        if Dialogs.vault-error != "" : Text {
+            text: Dialogs.vault-error;
+            color: Theme.danger;
+            font-size: Theme.font-sm;
+            wrap: word-wrap;
+        }
+    }
+    DialogFooter {
+        GhostButton {
+            text: "Abbrechen";
+            clicked => {
+                pw = "";
+                pw2 = "";
+                Bridge.vault-cancel();
+            }
+        }
+        PrimaryButton {
+            text: Dialogs.vault-confirm ? "Verschlüsselt exportieren" : "Entsperren";
+            enabled: pw != "" && (!Dialogs.vault-confirm || (pw == pw2 && pw.character-count >= 8));
+            clicked => {
+                Bridge.vault-accept(pw);
+                pw = "";
+                pw2 = "";
+            }
+        }
+    }
+}

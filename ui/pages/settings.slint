@@ -1,0 +1,484 @@
+// Einstellungen als eigene Seite mit Navigation.
+
+import { ComboBox, SpinBox, ScrollView, ListView } from "std-widgets.slint";
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, Dialogs, SettingsData } from "../bridge.slint";
+import { IconButton, ToggleRow, Segmented, FieldLabel, SectionLabel, PrimaryButton, GhostButton, Card, Divider } from "../components/basics.slint";
+
+component NavEntry inherits Rectangle {
+    in property <image> icon;
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    border-radius: 0;
+    background: selected ? Theme.accent-softer : ta.has-hover ? Theme.hover : transparent;
+    Rectangle { x: 0; width: 3px; background: Theme.accent; visible: selected; }
+    HorizontalLayout {
+        padding-left: 12px;
+        spacing: 10px;
+        Image {
+            source: icon;
+            width: 15px;
+            height: 15px;
+            y: (parent.height - self.height) / 2;
+            colorize: selected ? Theme.accent : Theme.text-muted;
+        }
+        Text {
+            text: label.to-uppercase();
+            color: selected ? Theme.text : Theme.text-muted;
+            font-size: Theme.font-sm;
+            font-weight: selected ? 600 : 500;
+            letter-spacing: 0.7px;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component SettingGroup inherits VerticalLayout {
+    in property <string> title;
+    in property <string> description;
+    spacing: 10px;
+    VerticalLayout {
+        spacing: 3px;
+        SectionLabel { text: title.to-uppercase(); font-size: 11px; }
+        if description != "" : Text {
+            text: description;
+            color: Theme.text-muted;
+            font-size: Theme.font-sm;
+            wrap: word-wrap;
+        }
+    }
+    Card {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            @children
+        }
+    }
+}
+
+component ShortcutRow inherits HorizontalLayout {
+    in property <string> keys;
+    in property <string> action;
+    spacing: 12px;
+    height: 28px;
+    Text {
+        text: action;
+        color: Theme.text;
+        font-size: Theme.font-md;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+    Rectangle {
+        width: k.preferred-width + 16px;
+        height: 22px;
+        y: 3px;
+        border-radius: Theme.radius-xs;
+        background: Theme.bg;
+        border-width: 1px;
+        border-color: Theme.border;
+        k := Text {
+            text: keys;
+            color: Theme.text-muted;
+            font-size: Theme.font-sm;
+            font-weight: 600;
+        }
+    }
+}
+
+export component SettingsPage inherits Rectangle {
+    callback close();
+    background: Theme.bg;
+    private property <SettingsData> s: Dialogs.settings;
+
+    function commit() {
+        Dialogs.settings = s;
+        Bridge.settings-changed(s);
+    }
+
+    // Klicks nicht an darunterliegende Elemente weiterreichen
+    TouchArea {}
+
+    HorizontalLayout {
+        // Navigation
+        Rectangle {
+            width: 230px;
+            background: Theme.surface;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 2px;
+                HorizontalLayout {
+                    height: 40px;
+                    spacing: 8px;
+                    IconButton {
+                        icon: Icons.arrow-left;
+                        tooltip: "Zurück";
+                        y: (parent.height - self.height) / 2;
+                        clicked => { root.close(); }
+                    }
+                    Text {
+                        text: "EINSTELLUNGEN";
+                        color: Theme.text;
+                        font-family: Theme.font-display;
+                        font-size: 13px;
+                        font-weight: 700;
+                        letter-spacing: 1.4px;
+                        vertical-alignment: center;
+                    }
+                }
+                Rectangle { height: 8px; }
+                NavEntry { icon: Icons.sliders; label: "Allgemein"; selected: Dialogs.settings-section == 0; clicked => { Dialogs.settings-section = 0; } }
+                NavEntry { icon: Icons.sun; label: "Darstellung"; selected: Dialogs.settings-section == 1; clicked => { Dialogs.settings-section = 1; } }
+                NavEntry { icon: Icons.monitor; label: "RDP"; selected: Dialogs.settings-section == 2; clicked => { Dialogs.settings-section = 2; } }
+                NavEntry { icon: Icons.shield; label: "Sicherheit"; selected: Dialogs.settings-section == 3; clicked => { Dialogs.settings-section = 3; } }
+                NavEntry { icon: Icons.keyboard; label: "Tastenkombinationen"; selected: Dialogs.settings-section == 4; clicked => { Dialogs.settings-section = 4; } }
+                NavEntry { icon: Icons.upload; label: "Import / Export"; selected: Dialogs.settings-section == 5; clicked => { Dialogs.settings-section = 5; } }
+                NavEntry { icon: Icons.info; label: "Über die Anwendung"; selected: Dialogs.settings-section == 6; clicked => { Dialogs.settings-section = 6; } }
+            }
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.border;
+            }
+        }
+
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                padding-left: 40px;
+                padding-right: 40px;
+                padding-top: 36px;
+                padding-bottom: 36px;
+                spacing: 28px;
+                alignment: start;
+
+                // ---------------------------------------- Allgemein
+                if Dialogs.settings-section == 0 : VerticalLayout {
+                    spacing: 28px;
+                    max-width: 720px;
+                    SettingGroup {
+                        title: "Verhalten";
+                        VerticalLayout {
+                            spacing: 6px;
+                            FieldLabel { text: "Beim Öffnen einer bereits verbundenen Verbindung"; }
+                            Segmented {
+                                options: ["Vorhandenen Tab aktivieren", "Immer neue Sitzung"];
+                                selected <=> s.open-behavior;
+                                changed => { commit(); }
+                            }
+                        }
+                        Divider {}
+                        ToggleRow {
+                            title: "Schließen aktiver Sitzungen bestätigen";
+                            description: "Rückfrage beim Schließen eines Tabs oder der Anwendung mit verbundenen Sitzungen.";
+                            checked <=> s.confirm-close;
+                            toggled => { commit(); }
+                        }
+                        Divider {}
+                        ToggleRow {
+                            title: "Mit Windows starten";
+                            description: "Remora bei der Anmeldung automatisch starten (aktueller Benutzer).";
+                            checked <=> s.autostart;
+                            toggled => { commit(); }
+                        }
+                    }
+                }
+
+                // ---------------------------------------- Darstellung
+                if Dialogs.settings-section == 1 : VerticalLayout {
+                    spacing: 28px;
+                    max-width: 720px;
+                    SettingGroup {
+                        title: "Design";
+                        VerticalLayout {
+                            spacing: 6px;
+                            FieldLabel { text: "Farbschema"; }
+                            Segmented {
+                                options: ["Dunkel", "Hell", "System"];
+                                selected <=> s.theme;
+                                changed => { commit(); }
+                            }
+                        }
+                        Divider {}
+                        VerticalLayout {
+                            spacing: 8px;
+                            FieldLabel { text: "Akzentfarbe"; }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                for c in [#ff006e, #8338ec, #00b4d8, #3a86ff, #06d6a0, #ffd60a, #ff5400, #c77dff] : Rectangle {
+                                    width: 28px;
+                                    height: 28px;
+                                    border-radius: 14px;
+                                    background: c;
+                                    border-width: s.accent == c ? 3px : 0;
+                                    border-color: Theme.text;
+                                    TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => {
+                                            s.accent = c;
+                                            commit();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---------------------------------------- RDP
+                if Dialogs.settings-section == 2 : VerticalLayout {
+                    spacing: 28px;
+                    max-width: 720px;
+                    SettingGroup {
+                        title: "Standardwerte für neue Verbindungen";
+                        VerticalLayout {
+                            spacing: 6px;
+                            FieldLabel { text: "Standardauflösung"; }
+                            ComboBox {
+                                model: Bridge.resolution-options;
+                                current-index <=> s.resolution-index;
+                                selected => { commit(); }
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 6px;
+                            FieldLabel { text: "Standardskalierung"; }
+                            Segmented {
+                                options: ["Einpassen", "Original (1:1)", "Strecken"];
+                                selected <=> s.scale-mode;
+                                changed => { commit(); }
+                            }
+                        }
+                    }
+                    SettingGroup {
+                        title: "Verbindung";
+                        HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text { text: "Verbindungs-Timeout (Sekunden)"; color: Theme.text; font-size: Theme.font-md; }
+                            }
+                            SpinBox {
+                                width: 120px;
+                                minimum: 5;
+                                maximum: 300;
+                                value <=> s.connect-timeout;
+                                edited => { commit(); }
+                            }
+                        }
+                        Divider {}
+                        ToggleRow {
+                            title: "Automatisch wiederverbinden";
+                            description: "Nach einem unerwarteten Verbindungsverlust automatisch neu verbinden (kann pro Verbindung überschrieben werden).";
+                            checked <=> s.auto-reconnect;
+                            toggled => { commit(); }
+                        }
+                        if s.auto-reconnect : HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text { text: "Maximale Versuche"; color: Theme.text; font-size: Theme.font-md; }
+                            }
+                            SpinBox {
+                                width: 120px;
+                                minimum: 1;
+                                maximum: 50;
+                                value <=> s.reconnect-attempts;
+                                edited => { commit(); }
+                            }
+                        }
+                    }
+                    SettingGroup {
+                        title: "Tastatur";
+                        VerticalLayout {
+                            spacing: 6px;
+                            FieldLabel { text: "Windows-Tastenkombinationen (Win, Alt+Tab, Strg+Esc) an die Sitzung senden"; }
+                            Segmented {
+                                options: ["Immer", "Nur im Vollbild", "Nie"];
+                                selected <=> s.windows-keys;
+                                changed => { commit(); }
+                            }
+                        }
+                    }
+                }
+
+                // ---------------------------------------- Sicherheit
+                if Dialogs.settings-section == 3 : VerticalLayout {
+                    spacing: 28px;
+                    max-width: 820px;
+                    SettingGroup {
+                        title: "Zugangsdaten";
+                        description: "Passwörter werden ausschließlich im Windows Credential Manager gespeichert (Einträge \"Remora RDP/…\"). Die Datenbank und Konfigurationsdateien enthalten keine Passwörter; Protokolle schreiben keine Zugangsdaten.";
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Image { source: Icons.lock; width: 16px; height: 16px; colorize: Theme.success; y: 2px; }
+                            Text {
+                                text: "Verschlüsselte Exporte nutzen Argon2id + XChaCha20-Poly1305 mit Master-Passwort.";
+                                color: Theme.text-muted;
+                                font-size: Theme.font-sm;
+                                wrap: word-wrap;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                    SettingGroup {
+                        title: "Vertrauenswürdige Serverzertifikate";
+                        description: "Zertifikate, denen du beim Verbinden dauerhaft vertraut hast. Ändert sich ein Zertifikat, warnt Remora vor dem Verbindungsaufbau.";
+                        if Bridge.known-hosts.length == 0 : Text {
+                            text: "Noch keine gespeicherten Zertifikate.";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-sm;
+                        }
+                        for host in Bridge.known-hosts : HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text { text: host.endpoint; color: Theme.text; font-size: Theme.font-md; font-weight: 600; }
+                                Text { text: host.fingerprint; color: Theme.text-faint; font-size: Theme.font-xs; font-family: "Cascadia Mono"; overflow: elide; }
+                                Text { text: "Vertraut seit " + host.first-seen; color: Theme.text-faint; font-size: Theme.font-xs; }
+                            }
+                            GhostButton {
+                                text: "Entfernen";
+                                danger: true;
+                                y: 6px;
+                                clicked => { Bridge.forget-known-host(host.endpoint); }
+                            }
+                        }
+                    }
+                }
+
+                // ---------------------------------------- Tastenkombinationen
+                if Dialogs.settings-section == 4 : VerticalLayout {
+                    spacing: 28px;
+                    max-width: 720px;
+                    SettingGroup {
+                        title: "Anwendung";
+                        description: "Gelten, solange die Tastatur nicht von einer Remote-Sitzung erfasst wird.";
+                        ShortcutRow { keys: "Strg+T"; action: "Neuer Verbindungstab (Schnellverbindung)"; }
+                        ShortcutRow { keys: "Strg+W"; action: "Aktiven Tab schließen"; }
+                        ShortcutRow { keys: "Strg+Tab"; action: "Nächster Tab"; }
+                        ShortcutRow { keys: "Strg+Umschalt+Tab"; action: "Vorheriger Tab"; }
+                        ShortcutRow { keys: "Strg+F"; action: "Verbindung suchen"; }
+                        ShortcutRow { keys: "F11"; action: "Vollbildmodus"; }
+                        ShortcutRow { keys: "Strg+N"; action: "Neue Verbindung anlegen"; }
+                    }
+                    SettingGroup {
+                        title: "In einer Remote-Sitzung";
+                        description: "Hat eine Sitzung den Tastaturfokus, gehen alle Tasten an den Server – auch Strg+T, Strg+W usw. Lokale Aktionen erreichst du dann über diese Kombinationen:";
+                        ShortcutRow { keys: "Strg+Alt+Pos1"; action: "Tastatur freigeben (zurück zur Anwendung)"; }
+                        ShortcutRow { keys: "Strg+Alt+Pause"; action: "Vollbildmodus umschalten"; }
+                        ShortcutRow { keys: "Strg+Alt+Bild↑ / Bild↓"; action: "Vorheriger / nächster Tab"; }
+                        ShortcutRow { keys: "Strg+Alt+Ende"; action: "Strg+Alt+Entf an die Sitzung senden"; }
+                    }
+                }
+
+                // ---------------------------------------- Import / Export
+                if Dialogs.settings-section == 5 : VerticalLayout {
+                    spacing: 28px;
+                    max-width: 720px;
+                    SettingGroup {
+                        title: "Gesamte Konfiguration";
+                        description: "Ordner und Verbindungen als JSON-Datei sichern oder auf einem anderen Rechner wiederherstellen.";
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            GhostButton {
+                                text: "Exportieren (ohne Passwörter)";
+                                has-icon: true;
+                                icon: Icons.upload;
+                                clicked => { Bridge.export-config(false); }
+                            }
+                            GhostButton {
+                                text: "Verschlüsselt mit Passwörtern …";
+                                has-icon: true;
+                                icon: Icons.lock;
+                                clicked => { Bridge.export-config(true); }
+                            }
+                        }
+                        Divider {}
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            GhostButton {
+                                text: "Konfiguration importieren …";
+                                has-icon: true;
+                                icon: Icons.download;
+                                clicked => { Bridge.import-config(); }
+                            }
+                        }
+                        Text {
+                            text: "Importierte Verbindungen werden zusätzlich zu den bestehenden angelegt. Verschlüsselte Exporte fragen nach dem Master-Passwort.";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-xs;
+                            wrap: word-wrap;
+                        }
+                    }
+                    SettingGroup {
+                        title: "Microsoft-RDP-Dateien";
+                        description: "Einzelne Verbindungen als .rdp-Datei importieren. Export über das Kontextmenü einer Verbindung.";
+                        HorizontalLayout {
+                            alignment: start;
+                            GhostButton {
+                                text: ".rdp-Dateien importieren …";
+                                has-icon: true;
+                                icon: Icons.download;
+                                clicked => { Bridge.import-rdp(); }
+                            }
+                        }
+                    }
+                }
+
+                // ---------------------------------------- Über
+                if Dialogs.settings-section == 6 : VerticalLayout {
+                    spacing: 20px;
+                    max-width: 720px;
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: start;
+                        Rectangle {
+                            width: 168px;
+                            height: 168px;
+                            border-radius: Theme.radius-lg;
+                            clip: true;
+                            Image { source: Icons.logo-full; width: 100%; height: 100%; }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            Text { text: "Remora RDP"; color: Theme.text; font-family: Theme.font-display; font-size: Theme.font-xl; font-weight: 800; letter-spacing: 1px; }
+                            Text { text: "Remote Desktop Manager · Teil des ora-Stacks (Proxora, Dockora, Sambora)"; color: Theme.text-muted; font-size: Theme.font-sm; }
+                            Text { text: "Version " + Bridge.version; color: Theme.text-muted; font-size: Theme.font-md; }
+                        }
+                    }
+                    SettingGroup {
+                        title: "Technik";
+                        Text { text: Bridge.backend-info; color: Theme.text-muted; font-size: Theme.font-sm; wrap: word-wrap; }
+                        Divider {}
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 2px;
+                                Text { text: "Datenverzeichnis"; color: Theme.text; font-size: Theme.font-md; }
+                                Text { text: Bridge.data-path; color: Theme.text-faint; font-size: Theme.font-xs; overflow: elide; }
+                            }
+                            GhostButton {
+                                text: "Öffnen";
+                                clicked => { Bridge.open-data-folder(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

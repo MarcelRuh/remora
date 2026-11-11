@@ -1,0 +1,150 @@
+// Design-Tokens: Farben, Radien, Abstände, Typografie.
+// Angeglichen an den ora-Stack (Proxora, Dockora, Sambora): fast schwarze Flächen,
+// violett getönte Rahmen, Pink als Akzent, Cyan für Abschnittstitel, Orbitron für
+// Überschriften und Schriftzug.
+
+import { Palette } from "std-widgets.slint";
+import "../../assets/fonts/Orbitron-Variable.ttf";
+
+export global Theme {
+    in-out property <bool> dark: true;
+    in-out property <color> accent: #ff006e;
+
+    // Markenfarben des ora-Stacks
+    out property <color> brand-pink: #ff006e;
+    out property <color> brand-purple: #8338ec;
+    out property <color> brand-blue: #00b4d8;
+
+    // Flächen
+    out property <color> bg: dark ? #0a0a0f : #f5f4fa;
+    out property <color> surface: dark ? #0d0d15 : #fbfaff;
+    out property <color> surface-raised: dark ? #11111b : #ffffff;
+    out property <color> hover: dark ? #171726 : #efecf8;
+    out property <color> active: dark ? #1e1e33 : #e6e1f5;
+    out property <color> border: dark ? #8338ec2e : #8338ec26;
+    out property <color> border-strong: dark ? #8338ec5a : #8338ec4d;
+    out property <color> overlay: dark ? #000000b0 : #14102470;
+    out property <color> remote-bg: dark ? #050508 : #1a1a24;
+
+    // Text
+    out property <color> text: dark ? #ffffff : #14121f;
+    out property <color> text-muted: dark ? #a0a0b8 : #545070;
+    out property <color> text-faint: dark ? #6c6c8a : #8a86a3;
+    out property <color> on-accent: #ffffff;
+    // Überschriften-Akzent (Kicker wie „OVERVIEW“ in Proxora)
+    out property <color> kicker: dark ? #00b4d8 : #0089a8;
+
+    // Akzent-Varianten
+    out property <color> accent-hover: accent.brighter(12%);
+    out property <color> accent-soft: dark ? accent.with-alpha(16%) : accent.with-alpha(12%);
+    out property <color> accent-softer: accent.with-alpha(9%);
+
+    // Status
+    out property <color> success: dark ? #06d6a0 : #059b74;
+    out property <color> warning: dark ? #ffd60a : #b88f00;
+    out property <color> danger: dark ? #ff5400 : #e04a00;
+    out property <color> danger-soft: danger.with-alpha(14%);
+    out property <color> idle: dark ? #55556e : #a19dbb;
+
+    // Geometrie (ora: kantig, 4 px)
+    out property <length> radius-xs: 2px;
+    out property <length> radius-sm: 4px;
+    out property <length> radius: 4px;
+    out property <length> radius-lg: 6px;
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 24px;
+    out property <length> space-6: 32px;
+
+    // Typografie
+    out property <string> font: "Segoe UI Variable Text";
+    out property <string> font-display: "Orbitron";
+    out property <length> kicker-spacing: 2.4px;
+    out property <length> font-xs: 11px;
+    out property <length> font-sm: 12px;
+    out property <length> font-md: 13px;
+    out property <length> font-lg: 15px;
+    out property <length> font-xl: 20px;
+    out property <length> font-xxl: 28px;
+
+    out property <duration> fast: 90ms;
+    out property <duration> normal: 160ms;
+
+    // 0 getrennt, 1 verbinde, 2 verbunden, 3 Fehler, 4 Wiederverbindung
+    public pure function status-color(status: int) -> color {
+        if status == 2 { return success; }
+        if status == 1 || status == 4 { return warning; }
+        if status == 3 { return danger; }
+        return idle;
+    }
+}
+
+export global Icons {
+    out property <image> monitor: @image-url("../icons/monitor.svg");
+    out property <image> server: @image-url("../icons/server.svg");
+    out property <image> laptop: @image-url("../icons/laptop.svg");
+    out property <image> database: @image-url("../icons/database.svg");
+    out property <image> globe: @image-url("../icons/globe.svg");
+    out property <image> cloud: @image-url("../icons/cloud.svg");
+    out property <image> folder: @image-url("../icons/folder.svg");
+    out property <image> folder-plus: @image-url("../icons/folder-plus.svg");
+    out property <image> chevron-right: @image-url("../icons/chevron-right.svg");
+    out property <image> chevron-down: @image-url("../icons/chevron-down.svg");
+    out property <image> search: @image-url("../icons/search.svg");
+    out property <image> plus: @image-url("../icons/plus.svg");
+    out property <image> x: @image-url("../icons/x.svg");
+    out property <image> win-minimize: @image-url("../icons/win-minimize.svg");
+    out property <image> win-maximize: @image-url("../icons/win-maximize.svg");
+    out property <image> win-restore: @image-url("../icons/win-restore.svg");
+    out property <image> win-close: @image-url("../icons/win-close.svg");
+    out property <image> star: @image-url("../icons/star.svg");
+    out property <image> clock: @image-url("../icons/clock.svg");
+    out property <image> activity: @image-url("../icons/activity.svg");
+    out property <image> layers: @image-url("../icons/layers.svg");
+    out property <image> sliders: @image-url("../icons/sliders.svg");
+    out property <image> tag: @image-url("../icons/tag.svg");
+    out property <image> pencil: @image-url("../icons/pencil.svg");
+    out property <image> trash: @image-url("../icons/trash.svg");
+    out property <image> copy: @image-url("../icons/copy.svg");
+    out property <image> power: @image-url("../icons/power.svg");
+    out property <image> refresh: @image-url("../icons/refresh.svg");
+    out property <image> maximize: @image-url("../icons/maximize.svg");
+    out property <image> minimize: @image-url("../icons/minimize.svg");
+    out property <image> layout-single: @image-url("../icons/layout-single.svg");
+    out property <image> layout-columns: @image-url("../icons/layout-columns.svg");
+    out property <image> layout-rows: @image-url("../icons/layout-rows.svg");
+    out property <image> layout-grid: @image-url("../icons/layout-grid.svg");
+    out property <image> sidebar: @image-url("../icons/sidebar.svg");
+    out property <image> lock: @image-url("../icons/lock.svg");
+    out property <image> shield: @image-url("../icons/shield.svg");
+    out property <image> download: @image-url("../icons/download.svg");
+    out property <image> upload: @image-url("../icons/upload.svg");
+    out property <image> arrow-right: @image-url("../icons/arrow-right.svg");
+    out property <image> arrow-left: @image-url("../icons/arrow-left.svg");
+    out property <image> keyboard: @image-url("../icons/keyboard.svg");
+    out property <image> info: @image-url("../icons/info.svg");
+    out property <image> sun: @image-url("../icons/sun.svg");
+    out property <image> more: @image-url("../icons/more.svg");
+    out property <image> zap: @image-url("../icons/zap.svg");
+    out property <image> check: @image-url("../icons/check.svg");
+    out property <image> alert: @image-url("../icons/alert.svg");
+    out property <image> sort: @image-url("../icons/sort.svg");
+    out property <image> link: @image-url("../icons/link.svg");
+    out property <image> user: @image-url("../icons/user.svg");
+    out property <image> eye: @image-url("../icons/eye.svg");
+    out property <image> logo: @image-url("../../assets/brand/remora-mark.png");
+    out property <image> logo-32: @image-url("../../assets/brand/remora-mark-32.png");
+    out property <image> logo-64: @image-url("../../assets/brand/remora-mark-64.png");
+    out property <image> logo-full: @image-url("../../assets/brand/remora-logo.png");
+
+    public pure function for-name(name: string) -> image {
+        if name == "server" { return server; }
+        if name == "laptop" { return laptop; }
+        if name == "database" { return database; }
+        if name == "globe" { return globe; }
+        if name == "cloud" { return cloud; }
+        return monitor;
+    }
+}

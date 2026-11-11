@@ -1,0 +1,116 @@
+[package]
+name = "remora"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Moderner RDP Connection Manager mit nativer Slint-Oberfläche und IronRDP"
+license = "MIT"
+repository = "https://github.com/MarcelRuh/remora"
+default-run = "remora"
+build = "build.rs"
+
+[lib]
+name = "remora"
+path = "src/lib.rs"
+
+[[bin]]
+name = "remora"
+path = "src/main.rs"
+
+[features]
+default = ["sound"]
+# Audio-Umleitung (RDPSND) über cpal/WASAPI.
+sound = ["ironrdp/client-sound"]
+
+[dependencies]
+# --- RDP -------------------------------------------------------------------
+# IronRDP wird auf einen festen Commit gepinnt: Die hier verwendete Client-Engine
+# (`ironrdp-client`) ist neuer als die zuletzt auf crates.io veröffentlichte Version.
+ironrdp = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4", features = [
+    "connector",
+    "session",
+    "input",
+    "pdu",
+    "graphics",
+    "cliprdr",
+    "client",
+    "rustls",
+    "client-clipboard",
+    "client-rdpdr",
+    "client-gateway",
+] }
+ironrdp-rdpfile = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4" }
+ironrdp-propertyset = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4" }
+ironrdp-tls = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4" }
+
+# --- UI --------------------------------------------------------------------
+slint = { version = "1.18", features = ["raw-window-handle-06"] }
+raw-window-handle = "0.6"
+
+# --- Async / Logging ---------------------------------------------------------
+tokio = { version = "1", features = ["rt-multi-thread", "rt", "sync", "time", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+
+# --- Daten ------------------------------------------------------------------
+rusqlite = { version = "0.41", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+directories = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+
+# --- Sicherheit -------------------------------------------------------------
+zeroize = { version = "1", features = ["zeroize_derive"] }
+sha2 = "0.10"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"
+
+# --- Sonstiges -------------------------------------------------------------
+anyhow = "1"
+thiserror = "2"
+rfd = { version = "0.15", default-features = false }
+smallvec = "1"
+
+[target.'cfg(windows)'.dependencies]
+ironrdp-cliprdr-native = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4" }
+ironrdp-rdpdr-native = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4" }
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Credentials",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+] }
+
+[build-dependencies]
+slint-build = "1.18"
+winresource = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+# Nur für `cargo run --example make_icon` (erzeugt assets/remora.ico und die Markenbilder)
+image = { version = "0.25", default-features = false, features = ["png", "webp", "bmp"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "debuginfo"
+panic = "unwind"
+
+# Decoder und Bildkonvertierung auch im Debug-Build optimieren, sonst ist die
+# Remote-Darstellung im Entwicklungsmodus unnötig träge.
+[profile.dev.package."*"]
+opt-level = 2

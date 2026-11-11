@@ -1,0 +1,384 @@
+﻿// Dialog zum Anlegen und Bearbeiten einer Verbindung.
+
+import { LineEdit, ComboBox, TextEdit, ScrollView } from "std-widgets.slint";
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, Dialogs, EditorData } from "../bridge.slint";
+import { Field, FieldLabel, ToggleRow, Segmented, PrimaryButton, GhostButton, ConnectionIcon, SectionLabel, CheckField } from "../components/basics.slint";
+import { Modal, DialogFooter } from "modal.slint";
+
+component ColorSwatch inherits Rectangle {
+    in property <color> value;
+    in property <bool> selected;
+    callback clicked();
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    background: value;
+    border-width: selected ? 2px : 0;
+    border-color: Theme.text;
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component IconChoice inherits Rectangle {
+    in property <string> name;
+    in property <bool> selected;
+    in property <color> tint;
+    callback clicked();
+    width: 34px;
+    height: 34px;
+    border-radius: Theme.radius-sm;
+    background: selected ? tint.with-alpha(18%) : ta.has-hover ? Theme.hover : transparent;
+    border-width: selected ? 1px : 0;
+    border-color: tint;
+    Image {
+        source: Icons.for-name(name);
+        width: 17px;
+        height: 17px;
+        colorize: selected ? tint : Theme.text-muted;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component ConnectionEditor inherits Modal {
+    title: Dialogs.editor-title;
+    subtitle: "Alle Änderungen werden lokal in der Datenbank gespeichert; Passwörter im Windows Credential Manager.";
+    dialog-width: 640px;
+    max-dialog-height: 760px;
+    close-requested => { Dialogs.editor-open = false; }
+
+    private property <EditorData> d: Dialogs.editor;
+    private property <int> section: 0;
+
+
+    VerticalLayout {
+        padding-left: 22px;
+        padding-right: 22px;
+        padding-top: 8px;
+        spacing: 14px;
+        Segmented {
+            options: ["Allgemein", "Anzeige", "Ressourcen", "Gateway", "Erweitert"];
+            selected <=> section;
+        }
+    }
+
+    ScrollView {
+        height: 430px;
+        VerticalLayout {
+            padding-left: 22px;
+            padding-right: 22px;
+            padding-top: 14px;
+            padding-bottom: 18px;
+            spacing: 14px;
+
+            // ------------------------------------------------ Allgemein
+            if section == 0 : VerticalLayout {
+                spacing: 14px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    Rectangle {
+                        width: 44px;
+                        ConnectionIcon { icon: d.icon; tint: d.color; size: 44px; }
+                    }
+                    name-field := Field {
+                        label: "Anzeigename";
+                        placeholder: "z. B. Domain Controller";
+                        text <=> d.name;
+                        horizontal-stretch: 1;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Hostname oder IP-Adresse";
+                        placeholder: "server.firma.local";
+                        text <=> d.host;
+                        horizontal-stretch: 3;
+                    }
+                    Field {
+                        label: "Port";
+                        text <=> d.port;
+                        horizontal-stretch: 1;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    Field {
+                        label: "Benutzername";
+                        placeholder: "optional";
+                        text <=> d.username;
+                        horizontal-stretch: 2;
+                    }
+                    Field {
+                        label: "Domäne";
+                        placeholder: "optional";
+                        text <=> d.domain;
+                        horizontal-stretch: 1;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Passwort"; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        LineEdit {
+                            input-type: password;
+                            text <=> d.password;
+                            placeholder-text: d.password-stored && d.password-action == 0 ? "•••••••• (gespeichert – leer lassen zum Beibehalten)" : "optional – sonst beim Verbinden abfragen";
+                            horizontal-stretch: 1;
+                            edited(t) => { d.password-action = t == "" ? 0 : 1; }
+                        }
+                        if d.password-stored : GhostButton {
+                            text: d.password-action == 2 ? "Wird entfernt" : "Entfernen";
+                            danger: true;
+                            clicked => {
+                                d.password = "";
+                                d.password-action = d.password-action == 2 ? 0 : 2;
+                            }
+                        }
+                    }
+                    Text {
+                        text: "Wird ausschließlich im Windows Credential Manager abgelegt – nie in der Datenbank.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        spacing: 5px;
+                        horizontal-stretch: 1;
+                        FieldLabel { text: "Ordner"; }
+                        ComboBox {
+                            model: Bridge.folder-labels;
+                            current-index <=> d.folder-index;
+                        }
+                    }
+                    Field {
+                        label: "Tags (Gruppen)";
+                        placeholder: "prod, kunde-a, dc";
+                        text <=> d.tags;
+                        horizontal-stretch: 1;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Beschreibung"; }
+                    TextEdit {
+                        text <=> d.description;
+                        height: 64px;
+                        wrap: word-wrap;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 24px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        FieldLabel { text: "Farbe"; }
+                        HorizontalLayout {
+                            spacing: 7px;
+                            for c in [#00b4d8, #8338ec, #ff006e, #ff5400, #ffd60a, #06d6a0, #3a86ff, #8888aa] : ColorSwatch {
+                                value: c;
+                                selected: d.color == c;
+                                clicked => { d.color = c; }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 6px;
+                        FieldLabel { text: "Symbol"; }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            for n in ["monitor", "server", "laptop", "database", "globe", "cloud"] : IconChoice {
+                                name: n;
+                                tint: d.color;
+                                selected: d.icon == n;
+                                clicked => { d.icon = n; }
+                            }
+                        }
+                    }
+                }
+                CheckField {
+                    text: "Als Favorit markieren";
+                    checked <=> d.favorite;
+                }
+            }
+
+            // ------------------------------------------------ Anzeige
+            if section == 1 : VerticalLayout {
+                spacing: 14px;
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Auflösung"; }
+                    ComboBox {
+                        model: Bridge.resolution-options;
+                        current-index <=> d.resolution-index;
+                    }
+                    Text {
+                        text: d.resolution-index == 0 ? "Die Remote-Auflösung folgt der Größe des Bereichs und passt sich bei Größenänderungen dynamisch an (sofern der Server Display Control unterstützt)." : "";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                        wrap: word-wrap;
+                    }
+                }
+                if d.resolution-index == Bridge.resolution-options.length - 1 : HorizontalLayout {
+                    spacing: 12px;
+                    Field { label: "Breite"; text <=> d.custom-width; }
+                    Field { label: "Höhe"; text <=> d.custom-height; }
+                }
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Farbtiefe"; }
+                    Segmented {
+                        options: ["32 Bit", "24 Bit", "16 Bit", "15 Bit"];
+                        selected <=> d.color-depth-index;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Skalierung der Remote-Anzeige"; }
+                    Segmented {
+                        options: ["Einpassen", "Original (1:1)", "Strecken"];
+                        selected <=> d.scale-mode;
+                    }
+                }
+                ToggleRow {
+                    title: "Im Vollbildmodus öffnen";
+                    description: "Die Sitzung startet ohne Sidebar und Tab-Leiste (F11 bzw. Strg+Alt+Pause beendet den Vollbildmodus).";
+                    checked <=> d.fullscreen;
+                }
+            }
+
+            // ------------------------------------------------ Ressourcen
+            if section == 2 : VerticalLayout {
+                spacing: 4px;
+                ToggleRow {
+                    title: "Zwischenablage";
+                    description: "Text, Bilder und Dateien zwischen lokalem Rechner und Sitzung austauschen.";
+                    checked <=> d.clipboard;
+                }
+                ToggleRow {
+                    title: "Audio-Wiedergabe";
+                    description: "Ton der Remote-Sitzung lokal abspielen.";
+                    checked <=> d.audio;
+                }
+                ToggleRow {
+                    title: "Drucker";
+                    description: "Lokalen Standarddrucker in der Sitzung bereitstellen.";
+                    checked <=> d.printers;
+                }
+                ToggleRow {
+                    title: "Laufwerke";
+                    description: "Alle lokalen Laufwerke (inkl. später angeschlossener) in der Sitzung bereitstellen.";
+                    checked <=> d.drives;
+                }
+            }
+
+            // ------------------------------------------------ Gateway
+            if section == 3 : VerticalLayout {
+                spacing: 14px;
+                ToggleRow {
+                    title: "RD-Gateway verwenden";
+                    description: "Verbindung über ein Remote Desktop Gateway (HTTPS/WebSocket, Fallback RPC-over-HTTP).";
+                    checked <=> d.gateway-enabled;
+                }
+                if d.gateway-enabled : VerticalLayout {
+                    spacing: 14px;
+                    Field {
+                        label: "Gateway-Server";
+                        placeholder: "rdg.firma.de oder rdg.firma.de:443";
+                        text <=> d.gateway-host;
+                    }
+                    Field {
+                        label: "Gateway-Benutzer";
+                        placeholder: "leer = Anmeldedaten der Verbindung";
+                        text <=> d.gateway-username;
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        FieldLabel { text: "Gateway-Passwort"; }
+                        LineEdit {
+                            input-type: password;
+                            text <=> d.gateway-password;
+                            placeholder-text: d.gateway-password-stored ? "•••••••• (gespeichert)" : "leer = Passwort der Verbindung";
+                        }
+                    }
+                    CheckField {
+                        text: "Gateway umgehen, wenn der Server direkt erreichbar ist";
+                        checked <=> d.gateway-bypass;
+                    }
+                }
+            }
+
+            // ------------------------------------------------ Erweitert
+            if section == 4 : VerticalLayout {
+                spacing: 14px;
+                ToggleRow {
+                    title: "Network Level Authentication (NLA / CredSSP)";
+                    description: "Empfohlen. Anmeldung erfolgt vor dem Aufbau der Sitzung.";
+                    checked <=> d.nla;
+                }
+                ToggleRow {
+                    title: "Administrative Sitzung (Konsole)";
+                    checked <=> d.admin-session;
+                }
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Automatische Wiederverbindung"; }
+                    Segmented {
+                        options: ["Globale Einstellung", "Aktiviert", "Deaktiviert"];
+                        selected <=> d.auto-reconnect-index;
+                    }
+                }
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Individuelle RDP-Eigenschaften (.rdp-Syntax, eine pro Zeile)"; }
+                    TextEdit {
+                        text <=> d.custom-properties;
+                        height: 110px;
+                        font-size: Theme.font-sm;
+                    }
+                    Text {
+                        text: "z. B.  use multimon:i:0  ·  alternate shell:s:C:\\Tools\\app.exe  ·  compression:i:1";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            if Dialogs.editor-error != "" : Rectangle {
+                height: err.preferred-height + 16px;
+                border-radius: Theme.radius-sm;
+                background: Theme.danger-soft;
+                err := Text {
+                    x: 12px;
+                    width: parent.width - 24px;
+                    text: Dialogs.editor-error;
+                    color: Theme.danger;
+                    font-size: Theme.font-sm;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    DialogFooter {
+        GhostButton {
+            text: "Abbrechen";
+            clicked => { Dialogs.editor-open = false; }
+        }
+        PrimaryButton {
+            text: d.id == 0 ? "Verbindung anlegen" : "Speichern";
+            enabled: d.name != "" && d.host != "";
+            clicked => {
+                Dialogs.editor-error = Bridge.editor-save(d);
+            }
+        }
+    }
+}

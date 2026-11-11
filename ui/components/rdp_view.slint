@@ -1,0 +1,273 @@
+// Anzeigefläche einer RDP-Sitzung: Remote-Bild, Eingabeerfassung, Statusüberlagerung.
+
+import { Theme, Icons } from "../themes/theme.slint";
+import { Bridge, PaneItem } from "../bridge.slint";
+import { IconButton, StatusDot, PrimaryButton, GhostButton } from "basics.slint";
+
+export component Spinner inherits Rectangle {
+    in property <length> size: 28px;
+    in property <color> tint: Theme.accent;
+    width: size;
+    height: size;
+    Image {
+        source: Icons.refresh;
+        width: size;
+        height: size;
+        colorize: tint;
+        transform-rotation: animation-tick() / 1.1s * 360deg;
+    }
+}
+
+export component RdpPane inherits Rectangle {
+    in property <PaneItem> pane;
+    in property <int> pane-index;
+    in property <bool> is-focused;
+    in property <bool> show-header;
+    in property <bool> drop-highlight;
+    callback close-pane();
+    background: Theme.remote-bg;
+    clip: true;
+
+    public function focus-remote() {
+        fs.focus();
+    }
+
+    private property <int> focus-token: Bridge.focus-request;
+    changed focus-token => {
+        if Bridge.focus-request-pane == pane-index && pane.session-id >= 0 {
+            fs.focus();
+        }
+    }
+
+    // Kopfzeile in der Split-Ansicht
+    header := Rectangle {
+        visible: show-header;
+        height: show-header ? 28px : 0;
+        y: 0;
+        background: is-focused ? Theme.accent-soft : Theme.surface;
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 4px;
+            spacing: 8px;
+            if pane.session-id >= 0 : Rectangle {
+                width: 8px;
+                StatusDot { status: pane.status; size: 7px; }
+            }
+            Text {
+                text: pane.session-id >= 0 ? pane.name : "Leerer Bereich";
+                color: is-focused ? Theme.text : Theme.text-muted;
+                font-size: Theme.font-sm;
+                font-weight: is-focused ? 600 : 400;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            if pane.session-id >= 0 : Text {
+                text: pane.remote-width > 0 ? pane.remote-width + " × " + pane.remote-height : "";
+                color: Theme.text-faint;
+                font-size: Theme.font-xs;
+                vertical-alignment: center;
+            }
+            if pane.session-id >= 0 : IconButton {
+                size: 22px;
+                icon-size: 13px;
+                icon: Icons.maximize;
+                tooltip: "Maximieren";
+                y: 3px;
+                clicked => { Bridge.maximize-pane(pane-index); }
+            }
+            if pane.session-id >= 0 : IconButton {
+                size: 22px;
+                icon-size: 12px;
+                icon: Icons.x;
+                tooltip: "Aus Bereich entfernen";
+                y: 3px;
+                clicked => { root.close-pane(); }
+            }
+        }
+        header-ta := TouchArea {
+            double-clicked => { Bridge.maximize-pane(pane-index); }
+            clicked => { Bridge.focus-pane(pane-index); }
+        }
+    }
+
+    view := Rectangle {
+        y: header.height;
+        height: root.height - header.height;
+        width: root.width;
+        clip: true;
+
+        // Geometrie an Rust melden (für Mauskoordinaten und dynamische Auflösung)
+        changed width => { Bridge.pane-geometry(pane-index, self.width, self.height); }
+        changed height => { Bridge.pane-geometry(pane-index, self.width, self.height); }
+        init => { Bridge.pane-geometry(pane-index, self.width, self.height); }
+
+        private property <float> rw: Math.max(1, pane.remote-width);
+        private property <float> rh: Math.max(1, pane.remote-height);
+        private property <float> fit-scale: Math.min(self.width / 1px / rw, self.height / 1px / rh);
+
+        img := Image {
+            visible: pane.has-frame;
+            source: pane.frame;
+            image-fit: fill;
+            width: pane.scale-mode == 1 ? rw * 1phx : pane.scale-mode == 2 ? parent.width : rw * fit-scale * 1px;
+            height: pane.scale-mode == 1 ? rh * 1phx : pane.scale-mode == 2 ? parent.height : rh * fit-scale * 1px;
+            x: pane.scale-mode == 0 ? (parent.width - self.width) / 2 : 0;
+            y: pane.scale-mode == 0 ? (parent.height - self.height) / 2 : 0;
+        }
+
+        fs := FocusScope {
+            enabled: pane.session-id >= 0;
+            // Tastatureingaben werden über den systemweiten Tastatur-Hook an die Sitzung
+            // geleitet; hier werden nur verbleibende Ereignisse verschluckt.
+            key-pressed(e) => { return accept; }
+            key-released(e) => { return accept; }
+            changed has-focus => { Bridge.pane-capture(pane-index, self.has-focus); }
+        }
+
+        ta := TouchArea {
+            enabled: pane.session-id >= 0;
+            mouse-cursor: (pane.status == 2 && pane.has-frame && pane.cursor-mode != 0) ? MouseCursor.none : MouseCursor.default;
+            pointer-event(e) => {
+                if e.kind == PointerEventKind.down {
+                    fs.focus();
+                    Bridge.focus-pane(pane-index);
+                }
+                if e.kind == PointerEventKind.down || e.kind == PointerEventKind.up {
+                    Bridge.pane-pointer(pane-index,
+                        e.kind == PointerEventKind.down ? 0 : 1,
+                        e.button == PointerEventButton.left ? 0 : e.button == PointerEventButton.right ? 1 : e.button == PointerEventButton.middle ? 2 : e.button == PointerEventButton.back ? 3 : e.button == PointerEventButton.forward ? 4 : -1,
+                        self.mouse-x, self.mouse-y, self.width, self.height);
+                }
+            }
+            moved => {
+                Bridge.pane-pointer(pane-index, 2, -1, self.mouse-x, self.mouse-y, self.width, self.height);
+            }
+            scroll-event(e) => {
+                Bridge.pane-scroll(pane-index, e.delta-x, e.delta-y);
+                return accept;
+            }
+        }
+
+        // Remote-Mauszeiger als Overlay (latenzfrei an der lokalen Position)
+        if pane.cursor-mode == 2 && ta.has-hover && pane.status == 2 : Image {
+            source: pane.cursor;
+            width: pane.cursor-width * 1phx;
+            height: pane.cursor-height * 1phx;
+            x: ta.mouse-x - pane.cursor-hotspot-x * 1phx;
+            y: ta.mouse-y - pane.cursor-hotspot-y * 1phx;
+            image-fit: fill;
+        }
+
+        // Fokusrahmen in der Split-Ansicht
+        if show-header && is-focused : Rectangle {
+            border-width: 1px;
+            border-color: Theme.accent.with-alpha(70%);
+        }
+
+        // Ablage-Hervorhebung beim Ziehen eines Tabs
+        if drop-highlight : Rectangle {
+            background: Theme.accent.with-alpha(16%);
+            border-width: 2px;
+            border-color: Theme.accent;
+            Text {
+                text: "Hier anzeigen";
+                color: Theme.text;
+                font-size: Theme.font-lg;
+                font-weight: 600;
+            }
+        }
+
+        // Leerer Bereich
+        if pane.session-id < 0 && !drop-highlight : VerticalLayout {
+            alignment: center;
+            spacing: 8px;
+            HorizontalLayout {
+                alignment: center;
+                Image {
+                    source: Icons.layout-single;
+                    width: 28px;
+                    height: 28px;
+                    colorize: Theme.text-faint;
+                }
+            }
+            Text {
+                text: "Tab hierher ziehen oder Verbindung aus der Sidebar ablegen";
+                color: Theme.text-faint;
+                font-size: Theme.font-sm;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+
+        // Statusüberlagerung
+        if pane.session-id >= 0 && (pane.status != 2 || !pane.has-frame) : Rectangle {
+            background: pane.has-frame ? Theme.overlay : transparent;
+            Rectangle {
+                width: Math.min(parent.width - 32px, 380px);
+                height: card.preferred-height;
+                background: Theme.surface-raised;
+                border-radius: Theme.radius-lg;
+                border-width: 1px;
+                border-color: Theme.border;
+                drop-shadow-blur: 24px;
+                drop-shadow-color: #00000050;
+                card := VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    alignment: center;
+                    if pane.status == 1 || pane.status == 4 || (pane.status == 2 && !pane.has-frame) : HorizontalLayout {
+                        alignment: center;
+                        Spinner { size: 26px; tint: pane.status == 4 ? Theme.warning : Theme.accent; }
+                    }
+                    if pane.status == 3 : HorizontalLayout {
+                        alignment: center;
+                        Image { source: Icons.alert; width: 26px; height: 26px; colorize: Theme.danger; }
+                    }
+                    if pane.status == 0 : HorizontalLayout {
+                        alignment: center;
+                        Image { source: Icons.power; width: 26px; height: 26px; colorize: Theme.text-muted; }
+                    }
+                    Text {
+                        text: pane.name;
+                        color: Theme.text;
+                        font-size: Theme.font-lg;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: pane.status == 2 ? "Warte auf erstes Bild …" : pane.status-text;
+                        color: pane.status == 3 ? Theme.danger : Theme.text-muted;
+                        font-size: Theme.font-sm;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: pane.host;
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                        horizontal-alignment: center;
+                    }
+                    if pane.can-reconnect : HorizontalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        PrimaryButton {
+                            text: "Erneut verbinden";
+                            has-icon: true;
+                            icon: Icons.refresh;
+                            clicked => { Bridge.reconnect-session(pane.session-id); }
+                        }
+                    }
+                    if pane.status == 1 || pane.status == 4 : HorizontalLayout {
+                        alignment: center;
+                        GhostButton {
+                            text: "Abbrechen";
+                            clicked => { Bridge.disconnect-session(pane.session-id); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

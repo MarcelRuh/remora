@@ -1,0 +1,387 @@
+// Hauptfenster: Sidebar | Tabs + Arbeitsbereich (Einzel-/Split-Ansicht) | Statusleiste.
+
+import { Palette } from "std-widgets.slint";
+import { Theme, Icons } from "themes/theme.slint";
+import { Bridge, Dialogs, TreeItem, ConnCard, TabItem, PaneItem, EditorData, SettingsData, KnownHostItem, Toast } from "bridge.slint";
+import { Sidebar } from "components/sidebar.slint";
+import { TabBar } from "components/tabbar.slint";
+import { RdpPane } from "components/rdp_view.slint";
+import { StatusBar } from "components/statusbar.slint";
+import { TitleBar } from "components/titlebar.slint";
+import { Dashboard } from "pages/dashboard.slint";
+import { SettingsPage } from "pages/settings.slint";
+import { ConnectionEditor } from "dialogs/editor.slint";
+import { CredentialsDialog, CertificateDialog, ConfirmDialog, TextInputDialog, VaultDialog } from "dialogs/simple.slint";
+
+export { Bridge, Dialogs, Theme, TreeItem, ConnCard, TabItem, PaneItem, EditorData, SettingsData, KnownHostItem, Toast }
+
+component SplitHandle inherits Rectangle {
+    in property <bool> vertical;   // true = senkrechte Linie (verschiebt x)
+    callback dragged(length);      // Verschiebung relativ zur Startposition
+    callback released();
+    background: ta.pressed ? Theme.accent : ta.has-hover ? Theme.accent.with-alpha(60%) : Theme.border;
+    animate background { duration: Theme.fast; }
+    ta := TouchArea {
+        mouse-cursor: vertical ? MouseCursor.col-resize : MouseCursor.row-resize;
+        moved => {
+            if self.pressed {
+                root.dragged(vertical ? self.mouse-x - self.pressed-x : self.mouse-y - self.pressed-y);
+            }
+        }
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up {
+                root.released();
+            }
+        }
+    }
+}
+
+component Workspace inherits Rectangle {
+    in property <int> drop-pane: -1;
+    in-out property <float> split-x: 0.5;
+    in-out property <float> split-y: 0.5;
+    background: Theme.remote-bg;
+
+    private property <length> gap: 4px;
+    private property <float> start-x;
+    private property <float> start-y;
+
+    // Geometrie eines Bereichs
+    pure function pane-x(i: int) -> length {
+        if Bridge.layout-mode == 1 || Bridge.layout-mode == 3 {
+            return Math.mod(i, 2) == 0 ? 0 : root.width * split-x + gap / 2;
+        }
+        return 0;
+    }
+    pure function pane-y(i: int) -> length {
+        if Bridge.layout-mode == 2 { return i == 0 ? 0 : root.height * split-y + gap / 2; }
+        if Bridge.layout-mode == 3 { return i < 2 ? 0 : root.height * split-y + gap / 2; }
+        return 0;
+    }
+    pure function pane-w(i: int) -> length {
+        if Bridge.layout-mode == 1 || Bridge.layout-mode == 3 {
+            return Math.mod(i, 2) == 0 ? root.width * split-x - gap / 2 : root.width * (1 - split-x) - gap / 2;
+        }
+        return root.width;
+    }
+    pure function pane-h(i: int) -> length {
+        if Bridge.layout-mode == 2 { return i == 0 ? root.height * split-y - gap / 2 : root.height * (1 - split-y) - gap / 2; }
+        if Bridge.layout-mode == 3 { return i < 2 ? root.height * split-y - gap / 2 : root.height * (1 - split-y) - gap / 2; }
+        return root.height;
+    }
+
+    /// Bereich an einer absoluten Fensterposition (-1 = keiner).
+    public pure function pane-at(ax: length, ay: length) -> int {
+        if ax < root.absolute-position.x || ay < root.absolute-position.y
+            || ax > root.absolute-position.x + root.width || ay > root.absolute-position.y + root.height {
+            return -1;
+        }
+        if Bridge.layout-mode == 0 { return 0; }
+        if Bridge.layout-mode == 1 { return (ax - root.absolute-position.x) < root.width * split-x ? 0 : 1; }
+        if Bridge.layout-mode == 2 { return (ay - root.absolute-position.y) < root.height * split-y ? 0 : 1; }
+        return ((ax - root.absolute-position.x) < root.width * split-x ? 0 : 1)
+            + ((ay - root.absolute-position.y) < root.height * split-y ? 0 : 2);
+    }
+
+    for pane[i] in Bridge.panes : RdpPane {
+        x: pane-x(i);
+        y: pane-y(i);
+        width: pane-w(i);
+        height: pane-h(i);
+        pane: pane;
+        pane-index: i;
+        is-focused: Bridge.focused-pane == i;
+        show-header: Bridge.layout-mode != 0;
+        drop-highlight: drop-pane == i;
+        close-pane => { Bridge.assign-pane(i, -1); }
+    }
+
+    if Bridge.layout-mode == 1 || Bridge.layout-mode == 3 : SplitHandle {
+        vertical: true;
+        x: root.width * split-x - 2px;
+        width: 4px;
+        height: root.height;
+        dragged(dx) => {
+            if start-x == 0 { start-x = split-x; }
+            split-x = Math.max(0.15, Math.min(0.85, start-x + dx / root.width));
+        }
+        released => { start-x = 0; }
+    }
+    if Bridge.layout-mode == 2 || Bridge.layout-mode == 3 : SplitHandle {
+        vertical: false;
+        y: root.height * split-y - 2px;
+        height: 4px;
+        width: root.width;
+        dragged(dy) => {
+            if start-y == 0 { start-y = split-y; }
+            split-y = Math.max(0.15, Math.min(0.85, start-y + dy / root.height));
+        }
+        released => { start-y = 0; }
+    }
+}
+
+component ToastView inherits Rectangle {
+    in property <Toast> toast;
+    width: Math.min(420px, msg.preferred-width + 76px);
+    height: Math.max(44px, msg.preferred-height + 24px);
+    border-radius: Theme.radius;
+    background: Theme.surface-raised;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 20px;
+    drop-shadow-color: #00000055;
+    property <color> tint: toast.kind == 1 ? Theme.success : toast.kind == 2 ? Theme.warning : toast.kind == 3 ? Theme.danger : Theme.accent;
+    Rectangle {
+        x: 0;
+        width: 3px;
+        background: tint;
+        border-top-left-radius: Theme.radius;
+        border-bottom-left-radius: Theme.radius;
+    }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 10px;
+        spacing: 10px;
+        Image {
+            source: toast.kind == 1 ? Icons.check : toast.kind >= 2 ? Icons.alert : Icons.info;
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            colorize: tint;
+        }
+        msg := Text {
+            text: toast.message;
+            color: Theme.text;
+            font-size: Theme.font-sm;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            max-width: 320px;
+        }
+        Rectangle {
+            width: 20px;
+            Image {
+                source: Icons.x;
+                width: 12px;
+                height: 12px;
+                colorize: Theme.text-faint;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Bridge.dismiss-toast(); }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Remora RDP Manager";
+    icon: Icons.logo;
+    preferred-width: 1360px;
+    preferred-height: 860px;
+    min-width: 820px;
+    min-height: 560px;
+    background: Theme.bg;
+    default-font-family: Theme.font;
+    default-font-size: Theme.font-md;
+
+    in-out property <length> sidebar-width: 280px;
+    in-out property <bool> sidebar-collapsed: false;
+    in-out property <bool> dark-mode <=> Theme.dark;
+    in-out property <color> accent-color <=> Theme.accent;
+    in-out property <float> split-x: 0.5;
+    in-out property <float> split-y: 0.5;
+    callback sidebar-resized(length);
+    callback sidebar-collapsed-changed(bool);
+    callback close-requested-by-user();
+
+    private property <int> drop-pane: -1;
+    private property <length> sidebar-drag-start;
+
+    changed dark-mode => {
+        Palette.color-scheme = dark-mode ? ColorScheme.dark : ColorScheme.light;
+    }
+    init => {
+        Palette.color-scheme = dark-mode ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    root-fs := FocusScope {
+        key-pressed(e) => {
+            if e.modifiers.control && !e.modifiers.alt {
+                if e.text == "t" || e.text == "T" {
+                    Bridge.activate-tab(-1);
+                    Bridge.quick-focus-request += 1;
+                    return accept;
+                }
+                if e.text == "w" || e.text == "W" {
+                    if Bridge.active-tab >= 0 { Bridge.close-tab(Bridge.active-tab); }
+                    return accept;
+                }
+                if e.text == Key.Tab || e.text == Key.Backtab {
+                    Bridge.next-tab(e.modifiers.shift || e.text == Key.Backtab ? -1 : 1);
+                    return accept;
+                }
+                if e.text == "f" || e.text == "F" {
+                    if sidebar-collapsed {
+                        sidebar-collapsed = false;
+                        root.sidebar-collapsed-changed(false);
+                    }
+                    Bridge.set-sidebar-view(0);
+                    Bridge.search-focus-request += 1;
+                    return accept;
+                }
+                if e.text == "n" || e.text == "N" {
+                    Bridge.new-connection(-1);
+                    return accept;
+                }
+            }
+            if e.text == Key.F11 {
+                Bridge.toggle-fullscreen();
+                return accept;
+            }
+            return reject;
+        }
+
+        VerticalLayout {
+        if Bridge.custom-titlebar && !Bridge.fullscreen : TitleBar {
+            subtitle: Bridge.active-tab >= 0 && Bridge.active-tab < Bridge.tabs.length
+                ? Bridge.tabs[Bridge.active-tab].name
+                : Dialogs.settings-open ? "Einstellungen" : "";
+        }
+        Rectangle {
+        vertical-stretch: 1;
+        HorizontalLayout {
+            // ---------------------------------------------------- Sidebar
+            if !sidebar-collapsed && !Bridge.fullscreen : Rectangle {
+                width: sidebar-width;
+                sidebar := Sidebar {
+                    collapse => {
+                        sidebar-collapsed = true;
+                        root.sidebar-collapsed-changed(true);
+                    }
+                    open-settings => {
+                        Dialogs.settings-section = 0;
+                        Dialogs.settings-open = true;
+                    }
+                    drop-outside(id, ax, ay) => {
+                        Bridge.connect-in-pane(id, workspace.pane-at(ax, ay));
+                    }
+                }
+                // Breite verstellen
+                Rectangle {
+                    x: parent.width - 3px;
+                    width: 6px;
+                    resize-ta := TouchArea {
+                        mouse-cursor: col-resize;
+                        pointer-event(e) => {
+                            if e.kind == PointerEventKind.down {
+                                sidebar-drag-start = sidebar-width;
+                            }
+                            if e.kind == PointerEventKind.up {
+                                root.sidebar-resized(sidebar-width);
+                            }
+                        }
+                        moved => {
+                            if self.pressed {
+                                sidebar-width = Math.max(220px, Math.min(560px, sidebar-drag-start + self.mouse-x - self.pressed-x));
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: 2px;
+                        width: 2px;
+                        background: resize-ta.pressed || resize-ta.has-hover ? Theme.accent.with-alpha(70%) : transparent;
+                    }
+                }
+            }
+
+            // ---------------------------------------------------- Inhalt
+            VerticalLayout {
+                horizontal-stretch: 1;
+                if !Bridge.fullscreen : TabBar {
+                    sidebar-collapsed: sidebar-collapsed;
+                    expand-sidebar => {
+                        sidebar-collapsed = false;
+                        root.sidebar-collapsed-changed(false);
+                    }
+                    new-tab => {
+                        Bridge.activate-tab(-1);
+                        Bridge.quick-focus-request += 1;
+                    }
+                    drop-on-content(session, ax, ay) => {
+                        if Bridge.layout-mode != 0 {
+                            Bridge.assign-pane(workspace.pane-at(ax, ay), session);
+                        }
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    workspace := Workspace {
+                        visible: Bridge.active-tab >= 0 || Bridge.layout-mode != 0;
+                        drop-pane: drop-pane;
+                        split-x <=> root.split-x;
+                        split-y <=> root.split-y;
+                    }
+                    if Bridge.active-tab < 0 && Bridge.layout-mode == 0 : Dashboard {}
+
+                    // Vollbild: Leiste zum Beenden, wenn die Maus an den oberen Rand fährt
+                    if Bridge.fullscreen && Bridge.fullscreen-hint : Rectangle {
+                        y: 6px;
+                        x: (parent.width - self.width) / 2;
+                        width: exit-row.preferred-width + 24px;
+                        height: 34px;
+                        border-radius: 17px;
+                        background: Theme.surface-raised;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        drop-shadow-blur: 16px;
+                        drop-shadow-color: #00000060;
+                        exit-row := HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 8px;
+                            Image {
+                                source: Icons.minimize;
+                                width: 14px;
+                                height: 14px;
+                                y: (parent.height - self.height) / 2;
+                                colorize: Theme.text;
+                            }
+                            Text {
+                                text: "Vollbild beenden (F11 · Strg+Alt+Pause)";
+                                color: Theme.text;
+                                font-size: Theme.font-sm;
+                                vertical-alignment: center;
+                            }
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { Bridge.toggle-fullscreen(); }
+                        }
+                    }
+                }
+
+                if !Bridge.fullscreen : StatusBar {}
+            }
+        }
+
+        // ---------------------------------------------------- Überlagerungen
+        if Dialogs.settings-open : SettingsPage {
+            close => { Dialogs.settings-open = false; }
+        }
+        if Dialogs.editor-open : ConnectionEditor {}
+        if Dialogs.text-open : TextInputDialog {}
+        if Dialogs.confirm-open : ConfirmDialog {}
+        if Dialogs.vault-open : VaultDialog {}
+        if Dialogs.credentials-open : CredentialsDialog {}
+        if Dialogs.certificate-open : CertificateDialog {}
+
+        if Bridge.toast.visible : ToastView {
+            toast: Bridge.toast;
+            x: parent.width - self.width - 20px;
+            y: parent.height - self.height - 40px;
+        }
+        }
+        }
+    }
+}

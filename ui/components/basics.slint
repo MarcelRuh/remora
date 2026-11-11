@@ -1,0 +1,442 @@
+// Grundbausteine: Schaltflächen, Statusanzeigen, Formularfelder.
+
+import { LineEdit, ComboBox, TextEdit } from "std-widgets.slint";
+import { Theme, Icons } from "../themes/theme.slint";
+
+export component Icon inherits Image {
+    in property <length> size: 16px;
+    width: size;
+    height: size;
+    colorize: Theme.text-muted;
+    image-fit: contain;
+}
+
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <length> icon-size: 16px;
+    in property <string> tooltip;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    in property <color> icon-color: active ? Theme.accent : Theme.text-muted;
+    in property <length> size: 28px;
+    callback clicked();
+    width: size;
+    height: size;
+    border-radius: Theme.radius-sm;
+    background: !enabled ? transparent : ta.pressed ? Theme.active : (ta.has-hover || active) ? Theme.hover : transparent;
+    animate background { duration: Theme.fast; }
+    opacity: enabled ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: tooltip;
+
+    Image {
+        width: icon-size;
+        height: icon-size;
+        source: icon;
+        colorize: ta.has-hover && enabled ? Theme.text : icon-color;
+        animate colorize { duration: Theme.fast; }
+    }
+
+    ta := TouchArea {
+        enabled: enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    if ta.has-hover && tooltip != "" : Rectangle {
+        y: root.height + 6px;
+        x: (root.width - tip.preferred-width - 16px) / 2;
+        width: tip.preferred-width + 16px;
+        height: 24px;
+        background: Theme.dark ? #07070c : #241f38;
+        border-radius: Theme.radius-xs;
+        border-width: 1px;
+        border-color: Theme.dark ? Theme.border-strong : transparent;
+        z: 100;
+        tip := Text {
+            text: tooltip;
+            color: #ffffff;
+            font-size: Theme.font-xs;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    min-width: label.preferred-width + (has-icon ? 52px : 32px);
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    property <color> base: danger ? Theme.danger : Theme.accent;
+    background: !enabled ? base.with-alpha(40%) : ta.pressed ? base.darker(10%) : ta.has-hover ? base.brighter(10%) : base;
+    animate background { duration: Theme.fast; }
+    drop-shadow-blur: enabled && ta.has-hover ? 16px : 0px;
+    drop-shadow-color: base.with-alpha(Theme.dark ? 45% : 30%);
+    animate drop-shadow-blur { duration: Theme.normal; }
+    accessible-role: button;
+    accessible-label: text;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        alignment: center;
+        if has-icon : Image {
+            source: icon;
+            width: 15px;
+            colorize: Theme.on-accent;
+            y: (parent.height - self.height) / 2;
+            height: 15px;
+        }
+        label := Text {
+            text: root.text;
+            color: Theme.on-accent;
+            font-size: Theme.font-md;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component GhostButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <bool> enabled: true;
+    in property <bool> danger: false;
+    callback clicked();
+    min-width: label.preferred-width + (has-icon ? 50px : 28px);
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.border-strong : Theme.border;
+    background: ta.pressed ? Theme.active : ta.has-hover ? Theme.hover : transparent;
+    animate background, border-color { duration: Theme.fast; }
+    opacity: enabled ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: text;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        alignment: center;
+        if has-icon : Image {
+            source: icon;
+            width: 15px;
+            height: 15px;
+            y: (parent.height - self.height) / 2;
+            colorize: danger ? Theme.danger : Theme.text-muted;
+        }
+        label := Text {
+            text: root.text;
+            color: danger ? Theme.danger : Theme.text;
+            font-size: Theme.font-md;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        enabled: enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component StatusDot inherits Rectangle {
+    in property <int> status: 0;
+    in property <length> size: 8px;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: Theme.status-color(status);
+    animate background { duration: Theme.normal; }
+
+    // Pulsieren während des Verbindungsaufbaus
+    pulse := Rectangle {
+        width: parent.width * 2.2;
+        height: parent.height * 2.2;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: Theme.status-color(status).with-alpha(25%);
+        visible: status == 1 || status == 4;
+        opacity: (status == 1 || status == 4) ? (0.35 + 0.65 * Math.abs(Math.sin(animation-tick() / 1s * 180deg))) : 0;
+    }
+}
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <color> tint: Theme.text-muted;
+    height: 18px;
+    width: t.preferred-width + 12px;
+    border-radius: 9px;
+    background: tint.with-alpha(15%);
+    t := Text {
+        text: root.text;
+        color: root.tint;
+        font-size: Theme.font-xs;
+        font-weight: 600;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}
+
+export component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.border;
+}
+
+/// Abschnittsüberschrift im ora-Stil (Orbitron, Cyan, gesperrt; wie „OVERVIEW“ in Proxora).
+export component SectionLabel inherits Text {
+    color: Theme.kicker;
+    font-family: Theme.font-display;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: Theme.kicker-spacing;
+}
+
+/// Große Seitenüberschrift (Orbitron).
+export component DisplayTitle inherits Text {
+    color: Theme.text;
+    font-family: Theme.font-display;
+    font-size: Theme.font-xxl;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+export component FieldLabel inherits Text {
+    color: Theme.text-muted;
+    font-size: Theme.font-sm;
+}
+
+/// Beschriftetes Eingabefeld.
+export component Field inherits VerticalLayout {
+    in property <string> label;
+    in property <string> placeholder;
+    in property <string> hint;
+    in property <bool> password: false;
+    in property <bool> enabled: true;
+    in-out property <string> text;
+    callback edited(string);
+    callback accepted(string);
+    spacing: 5px;
+    if label != "" : FieldLabel { text: label; }
+    edit := LineEdit {
+        text <=> root.text;
+        placeholder-text: placeholder;
+        enabled: enabled;
+        input-type: password ? InputType.password : InputType.text;
+        edited(t) => { root.edited(t); }
+        accepted(t) => { root.accepted(t); }
+    }
+    if hint != "" : Text {
+        text: hint;
+        color: Theme.text-faint;
+        font-size: Theme.font-xs;
+        wrap: word-wrap;
+    }
+
+    public function focus-input() {
+        edit.focus();
+    }
+}
+
+/// Schalter im ora-Stil. Ersetzt den Fluent-`Switch`, der die Windows-Akzentfarbe statt
+/// der App-Akzentfarbe verwendet.
+export component ToggleSwitch inherits Rectangle {
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+    callback toggled();
+    width: 40px;
+    height: 20px;
+    border-radius: 10px;
+    background: checked ? Theme.accent : transparent;
+    border-width: checked ? 0px : 1px;
+    border-color: sw-ta.has-hover ? Theme.text-muted : Theme.text-faint;
+    opacity: enabled ? 1 : 0.4;
+    drop-shadow-blur: checked && enabled ? 10px : 0px;
+    drop-shadow-color: Theme.accent.with-alpha(40%);
+    animate background, drop-shadow-blur { duration: Theme.normal; }
+    accessible-role: switch;
+    accessible-checked: checked;
+    accessible-action-default => { sw-ta.clicked(); }
+
+    knob := Rectangle {
+        width: 12px;
+        height: 12px;
+        y: (parent.height - self.height) / 2;
+        x: root.checked ? root.width - self.width - 4px : 4px;
+        border-radius: 6px;
+        background: root.checked ? Theme.on-accent : Theme.text-muted;
+        animate x, background { duration: Theme.normal; easing: ease-out; }
+    }
+    sw-ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+}
+
+/// Kontrollkästchen mit Beschriftung im ora-Stil (statt Fluent-`CheckBox`, siehe oben).
+export component CheckField inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+    callback toggled();
+    min-height: 24px;
+    opacity: enabled ? 1 : 0.45;
+    accessible-role: checkbox;
+    accessible-checked: checked;
+    accessible-label: text;
+    accessible-action-default => { cb-ta.clicked(); }
+
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            border-radius: Theme.radius-xs;
+            background: root.checked ? Theme.accent : transparent;
+            border-width: root.checked ? 0px : 1px;
+            border-color: cb-ta.has-hover ? Theme.text-muted : Theme.text-faint;
+            animate background { duration: Theme.fast; }
+            if root.checked : Image {
+                source: Icons.check;
+                width: 12px;
+                height: 12px;
+                colorize: Theme.on-accent;
+            }
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.font-md;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    cb-ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+}
+
+
+/// Zeile mit Beschreibung und Schalter.
+export component ToggleRow inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+    callback toggled(bool);
+    min-height: description == "" ? 36px : 52px;
+
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: title;
+                color: enabled ? Theme.text : Theme.text-faint;
+                font-size: Theme.font-md;
+            }
+            if description != "" : Text {
+                text: description;
+                color: Theme.text-faint;
+                font-size: Theme.font-sm;
+                wrap: word-wrap;
+            }
+        }
+        ToggleSwitch {
+            y: (parent.height - self.height) / 2;
+            checked <=> root.checked;
+            enabled: root.enabled;
+            toggled => { root.toggled(self.checked); }
+        }
+    }
+}
+
+/// Segmentierte Auswahl (z. B. Design: Dunkel | Hell | System).
+export component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in-out property <int> selected;
+    callback changed(int);
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    background: Theme.bg;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+        for opt[i] in options : Rectangle {
+            border-radius: Theme.radius-xs;
+            background: i == selected ? Theme.accent-soft : seg-ta.has-hover ? Theme.hover : transparent;
+            drop-shadow-blur: i == selected ? 4px : 0;
+            drop-shadow-color: #00000030;
+            animate background { duration: Theme.fast; }
+            min-width: seg-text.preferred-width + 20px;
+            seg-text := Text {
+                text: opt;
+                color: i == selected ? Theme.accent : Theme.text-muted;
+                font-size: Theme.font-sm;
+                font-weight: i == selected ? 600 : 400;
+            }
+            seg-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    root.selected = i;
+                    root.changed(i);
+                }
+            }
+        }
+    }
+}
+
+/// Karte mit Rahmen.
+export component Card inherits Rectangle {
+    background: Theme.surface-raised;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border;
+}
+
+/// Kleines farbiges Verbindungssymbol.
+export component ConnectionIcon inherits Rectangle {
+    in property <string> icon: "monitor";
+    in property <color> tint: Theme.accent;
+    in property <length> size: 28px;
+    width: size;
+    height: size;
+    border-radius: Theme.radius-sm;
+    background: tint.with-alpha(16%);
+    Image {
+        source: Icons.for-name(icon);
+        width: size * 0.56;
+        height: size * 0.56;
+        colorize: tint;
+    }
+}

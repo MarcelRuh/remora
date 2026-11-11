@@ -1,0 +1,5 @@
+/target
+*.log
+# Lokale Daten im portablen Modus
+/data/
+remora.portable

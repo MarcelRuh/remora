@@ -88,6 +88,8 @@ pub struct AppSettings {
     pub open_behavior: OpenBehavior,
     pub confirm_close_active: bool,
     pub autostart: bool,
+    /// Beim Start auf neue Versionen (GitHub-Releases) prüfen.
+    pub check_updates: bool,
     pub windows_keys: WindowsKeyMode,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
@@ -114,6 +116,7 @@ impl Default for AppSettings {
             open_behavior: OpenBehavior::FocusExisting,
             confirm_close_active: true,
             autostart: false,
+            check_updates: true,
             windows_keys: WindowsKeyMode::FullscreenOnly,
             sidebar_width: 280.0,
             sidebar_collapsed: false,

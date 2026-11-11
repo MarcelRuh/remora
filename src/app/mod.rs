@@ -123,6 +123,9 @@ pub struct AppState {
     pending_vault: Option<VaultAction>,
     editor_base: Option<Connection>,
     toast_until: Option<Instant>,
+    /// Release-Seite einer gefundenen neueren Version.
+    update_url: Option<String>,
+    update_checking: bool,
     hwnd: isize,
     quitting: bool,
 }
@@ -179,6 +182,8 @@ pub fn run(
         pending_vault: None,
         editor_base: None,
         toast_until: None,
+        update_url: None,
+        update_checking: false,
         hwnd: 0,
         quitting: false,
     };
@@ -256,6 +261,11 @@ pub fn run(
             });
         });
     });
+
+    // Update-Prüfung kurz nach dem Start (abschaltbar in den Einstellungen)
+    if app.borrow().settings.check_updates {
+        Timer::single_shot(Duration::from_secs(5), || with_app(|s| s.start_update_check(false)));
+    }
 
     // Per Kommandozeile übergebene .rdp-Dateien importieren und öffnen (nach Layout-Aufbau)
     if !startup_files.is_empty() {
@@ -649,6 +659,8 @@ fn wire_callbacks(ui: &AppWindow) {
     });
     b.on_open_data_folder(|| with_app(|s| platform::open_folder(&s.paths.data_dir)));
     b.on_dismiss_toast(|| with_app(|s| s.hide_toast()));
+    b.on_check_updates(|| with_app(|s| s.start_update_check(true)));
+    b.on_open_update(|| with_app(|s| s.open_update()));
 
     ui.on_sidebar_resized(|w| {
         with_app(move |s| {
@@ -2054,6 +2066,76 @@ impl AppState {
                     self.pending_vault = Some(VaultAction::Import(text));
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------ Updates
+
+    /// Prüft im Hintergrund auf eine neuere Version. `manual`: Ergebnis auch anzeigen, wenn
+    /// keine neuere Version existiert oder die Prüfung fehlschlägt.
+    fn start_update_check(&mut self, manual: bool) {
+        if self.update_checking {
+            return;
+        }
+        self.update_checking = true;
+        self.with_ui(|ui| {
+            let b = ui.global::<Bridge>();
+            b.set_update_checking(true);
+            b.set_update_status("".into());
+        });
+        let spawned = std::thread::Builder::new().name("remora-update".into()).spawn(move || {
+            let result = crate::services::update::check(env!("CARGO_PKG_VERSION"));
+            let _ = slint::invoke_from_event_loop(move || with_app(move |s| s.finish_update_check(result, manual)));
+        });
+        if let Err(e) = spawned {
+            self.finish_update_check(Err(e.into()), manual);
+        }
+    }
+
+    fn finish_update_check(
+        &mut self,
+        result: anyhow::Result<Option<crate::services::update::UpdateInfo>>,
+        manual: bool,
+    ) {
+        self.update_checking = false;
+        let checked_at = chrono::Local::now().format("%H:%M").to_string();
+        // `version`: None = Anzeige unverändert lassen (Fehler), Some("") = keine neuere Version
+        let (version, status): (Option<String>, String) = match result {
+            Ok(Some(info)) => {
+                tracing::info!(version = %info.version, "Neue Version verfügbar");
+                self.update_url = Some(info.url);
+                (Some(info.version.to_string()), format!("Geprüft um {checked_at}."))
+            }
+            Ok(None) => {
+                self.update_url = None;
+                (
+                    Some(String::new()),
+                    format!("Remora ist aktuell (geprüft um {checked_at})."),
+                )
+            }
+            Err(e) => {
+                tracing::warn!(error = %format!("{e:#}"), "Update-Prüfung fehlgeschlagen");
+                let msg = if manual {
+                    format!("Prüfung fehlgeschlagen: {e}")
+                } else {
+                    String::new()
+                };
+                (None, msg)
+            }
+        };
+        self.with_ui(|ui| {
+            let b = ui.global::<Bridge>();
+            b.set_update_checking(false);
+            if let Some(v) = version {
+                b.set_update_version(v.into());
+            }
+            b.set_update_status(status.into());
+        });
+    }
+
+    fn open_update(&mut self) {
+        if let Some(url) = &self.update_url {
+            platform::open_url(url);
         }
     }
 

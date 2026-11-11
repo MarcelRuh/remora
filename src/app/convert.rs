@@ -287,6 +287,7 @@ pub fn settings_to_data(s: &AppSettings) -> SettingsData {
         },
         confirm_close: s.confirm_close_active,
         autostart: s.autostart,
+        check_updates: s.check_updates,
         windows_keys: s.windows_keys.index(),
     }
 }
@@ -308,6 +309,7 @@ pub fn apply_settings_data(d: &SettingsData, s: &mut AppSettings) {
     };
     s.confirm_close_active = d.confirm_close;
     s.autostart = d.autostart;
+    s.check_updates = d.check_updates;
     s.windows_keys = WindowsKeyMode::from_index(d.windows_keys);
 }
 

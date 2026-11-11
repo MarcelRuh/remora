@@ -74,6 +74,18 @@ export component StatusBar inherits Rectangle {
             horizontal-stretch: 1;
         }
 
+        if Bridge.update-version != "" : Rectangle {
+            width: upd.preferred-width;
+            upd := StatusSegment {
+                icon: Icons.download;
+                text: "Version " + Bridge.update-version + " verfügbar";
+                color: Theme.accent;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { Bridge.open-update(); }
+            }
+        }
         if Bridge.rdp-captured : StatusSegment {
             icon: Icons.keyboard;
             text: "Tastatur → Remote  ·  Strg+Alt+Pos1 gibt frei";

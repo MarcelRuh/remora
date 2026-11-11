@@ -111,6 +111,7 @@ export struct SettingsData {
     open-behavior: int,      // 0 vorhandenen Tab, 1 immer neu
     confirm-close: bool,
     autostart: bool,
+    check-updates: bool,
     windows-keys: int,       // 0 immer, 1 nur Vollbild, 2 nie
 }
 
@@ -153,6 +154,10 @@ export global Bridge {
     in-out property <string> status-duration;
     in-out property <int> status-state: -1;
     in-out property <string> version;
+    // Update-Prüfung: verfügbare Version (leer = keine) und Ergebnis der manuellen Prüfung
+    in-out property <string> update-version;
+    in-out property <string> update-status;
+    in-out property <bool> update-checking;
     in-out property <string> backend-info;
     in-out property <string> data-path;
     in-out property <bool> fullscreen;
@@ -230,6 +235,8 @@ export global Bridge {
     callback forget-known-host(string);
     callback open-data-folder();
     callback dismiss-toast();
+    callback check-updates();
+    callback open-update();
 }
 
 // Zustand der modalen Dialoge (wird von Rust gesetzt).

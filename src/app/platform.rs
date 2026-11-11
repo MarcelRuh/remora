@@ -83,3 +83,16 @@ pub fn bring_to_front(hwnd: isize) {
     #[cfg(not(windows))]
     let _ = hwnd;
 }
+
+/// Öffnet eine Web-Adresse im Standardbrowser.
+pub fn open_url(url: &str) {
+    #[cfg(windows)]
+    let result = std::process::Command::new("explorer").arg(url).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(url).spawn();
+    if let Err(e) = result {
+        tracing::warn!(error = %e, "Adresse konnte nicht geöffnet werden");
+    }
+}

@@ -186,6 +186,13 @@ export component SettingsPage inherits Rectangle {
                             checked <=> s.autostart;
                             toggled => { commit(); }
                         }
+                        Divider {}
+                        ToggleRow {
+                            title: "Nach Updates suchen";
+                            description: "Beim Start prüfen, ob auf GitHub eine neuere Version veröffentlicht wurde. Es wird nur die Versionsliste abgefragt, nichts automatisch installiert.";
+                            checked <=> s.check-updates;
+                            toggled => { commit(); }
+                        }
                     }
                 }
 
@@ -457,6 +464,39 @@ export component SettingsPage inherits Rectangle {
                             Text { text: "Remora RDP"; color: Theme.text; font-family: Theme.font-display; font-size: Theme.font-xl; font-weight: 800; letter-spacing: 1px; }
                             Text { text: "Remote Desktop Manager · Teil des ora-Stacks (Proxora, Dockora, Sambora)"; color: Theme.text-muted; font-size: Theme.font-sm; }
                             Text { text: "Version " + Bridge.version; color: Theme.text-muted; font-size: Theme.font-md; }
+                        }
+                    }
+                    SettingGroup {
+                        title: "Updates";
+                        HorizontalLayout {
+                            spacing: 10px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                spacing: 2px;
+                                Text {
+                                    text: Bridge.update-version != "" ? "Version " + Bridge.update-version + " ist verfügbar." : "Installiert: Version " + Bridge.version;
+                                    color: Bridge.update-version != "" ? Theme.accent : Theme.text;
+                                    font-size: Theme.font-md;
+                                }
+                                if Bridge.update-status != "" : Text {
+                                    text: Bridge.update-status;
+                                    color: Theme.text-faint;
+                                    font-size: Theme.font-xs;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            if Bridge.update-version != "" : PrimaryButton {
+                                text: "Release öffnen";
+                                has-icon: true;
+                                icon: Icons.download;
+                                clicked => { Bridge.open-update(); }
+                            }
+                            GhostButton {
+                                text: Bridge.update-checking ? "Prüfe …" : "Jetzt prüfen";
+                                enabled: !Bridge.update-checking;
+                                clicked => { Bridge.check-updates(); }
+                            }
                         }
                     }
                     SettingGroup {

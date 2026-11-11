@@ -155,3 +155,7 @@ Die Überschriften verwenden **Orbitron** (© The Orbitron Project Authors, SIL 
 ## Lizenz
 
 MIT – siehe [LICENSE](LICENSE). Orbitron: SIL Open Font License 1.1 (siehe oben).
+
+## Releases
+
+Versions-Tags `vX.Y.Z` (passend zu `version` in `Cargo.toml`) bauen in GitHub Actions automatisch Installer und portable ZIP und veröffentlichen sie als Release; die Release-Notizen stammen aus [CHANGELOG.md](CHANGELOG.md). Jeder Push und Pull Request durchläuft Format-, Clippy- und Testprüfung.

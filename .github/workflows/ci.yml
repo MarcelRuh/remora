@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test
+
+  release:
+    # Nur für Versions-Tags (vX.Y.Z): Release-Build, Installer, GitHub-Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Version prüfen (Tag = Cargo.toml)
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          $ver = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $ver) { throw "Tag $tag passt nicht zur Version $ver in Cargo.toml" }
+      - name: Inno Setup installieren
+        run: choco install innosetup --no-progress -y
+      - name: Release-Build und Installer
+        shell: pwsh
+        run: ./installer/build.ps1
+      - name: Release-Notizen aus CHANGELOG.md
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          $text = Get-Content CHANGELOG.md -Raw -Encoding utf8
+          $m = [regex]::Match($text, "(?ms)^## \[$([regex]::Escape($ver))\][^\n]*\n(.*?)(?=^## \[|\z)")
+          $notes = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "Siehe CHANGELOG.md" }
+          $notes | Out-File release-notes.md -Encoding utf8
+      - name: GitHub-Release anlegen
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = Get-ChildItem target/installer/*.exe | Select-Object -First 1
+          Compress-Archive -Path target/release/remora.exe, LICENSE, assets/fonts/OFL.txt -DestinationPath "target/Remora-RDP-${{ github.ref_name }}-portable-x64.zip"
+          gh release create "${{ github.ref_name }}" $setup.FullName "target/Remora-RDP-${{ github.ref_name }}-portable-x64.zip" --title "Remora RDP ${{ github.ref_name }}" --notes-file release-notes.md

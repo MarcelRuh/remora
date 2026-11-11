@@ -39,6 +39,24 @@ fn main() -> anyhow::Result<()> {
         tracing::error!(%info, "Unerwarteter Fehler (Panic)");
     }));
 
+    // `remora.exe verbindung.rdp` importiert und öffnet die Datei (absolute Pfade, damit eine
+    // bereits laufende Instanz sie unabhängig vom Arbeitsverzeichnis findet)
+    let startup_files: Vec<std::path::PathBuf> = std::env::args_os()
+        .skip(1)
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rdp")))
+        .map(|p| std::path::absolute(&p).unwrap_or(p))
+        .collect();
+
+    // Nur eine Instanz pro Windows-Sitzung: sonst Dateien an die laufende übergeben und enden.
+    let instance = match remora::app::instance::acquire(&startup_files) {
+        remora::app::instance::Startup::Primary(listener) => listener,
+        remora::app::instance::Startup::Forwarded => {
+            tracing::info!(files = startup_files.len(), "An laufende Instanz übergeben");
+            return Ok(());
+        }
+    };
+
     let settings = AppSettings::load(&paths.settings());
     let db = Arc::new(
         Database::open(&paths.database())
@@ -46,14 +64,7 @@ fn main() -> anyhow::Result<()> {
     );
     let creds: Arc<dyn credentials::CredentialStore> = Arc::from(credentials::platform_store());
 
-    // `remora.exe verbindung.rdp` importiert und öffnet die Datei
-    let startup_files: Vec<std::path::PathBuf> = std::env::args_os()
-        .skip(1)
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("rdp")))
-        .collect();
-
-    let result = remora::app::run(paths, settings, db, creds, startup_files);
+    let result = remora::app::run(paths, settings, db, creds, startup_files, instance);
     if let Err(e) = &result {
         tracing::error!(error = %format!("{e:#}"), "Anwendung mit Fehler beendet");
     }

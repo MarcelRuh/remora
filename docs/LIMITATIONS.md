@@ -52,7 +52,7 @@ Stand: Version 0.1.0. Die Tabelle unterscheidet zwischen **vollständig**, **tei
 * Unter Windows 10 fehlt am oberen Fensterrand die 1-px-Rahmenlinie, weil der Beschriftungsbereich zur Client-Fläche wird.
 * Außerhalb von Windows wird die Standard-Titelleiste des Systems verwendet.
 * Der Installer ersetzt nicht die Standardzuordnung von `.rdp` (Windows schützt sie per `UserChoice`); Remora erscheint unter „Öffnen mit“.
-* Es gibt keine Einzelinstanz: Ein Doppelklick auf eine `.rdp`-Datei öffnet ein weiteres Remora-Fenster.
+* Einzelinstanz gilt pro Windows-Sitzung. Startet ein anderer Benutzer Remora über „Ausführen als“ in derselben Sitzung, läuft er ohne Einzelinstanz weiter (die Pipe gehört dem ersten Benutzer).
 * Installer und EXE sind nicht signiert; SmartScreen kann beim ersten Start warnen.
 
 ## Design (ora-Stack)

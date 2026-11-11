@@ -4,6 +4,7 @@
 //! ausschließlich über den [`EventBus`]; der UI-Thread verarbeitet dessen Ereignisse gesammelt.
 
 pub mod convert;
+pub mod instance;
 pub mod keyboard;
 pub mod platform;
 pub mod titlebar;
@@ -134,6 +135,7 @@ pub fn run(
     db: Arc<Database>,
     creds: Arc<dyn CredentialStore>,
     startup_files: Vec<std::path::PathBuf>,
+    instance: instance::Listener,
 ) -> anyhow::Result<()> {
     let ui = AppWindow::new()?;
 
@@ -240,6 +242,20 @@ pub fn run(
 
     // Das native Fenster entsteht erst in der Ereignisschleife: so lange erneut versuchen.
     init_native_window(ui.as_weak(), 0);
+
+    // Weitere Programmstarts (z. B. Doppelklick auf .rdp) übergeben ihre Dateien hierher.
+    instance.spawn(|files| {
+        let _ = slint::invoke_from_event_loop(move || {
+            with_app(move |s| {
+                if s.hwnd != 0 {
+                    platform::bring_to_front(s.hwnd);
+                }
+                if !files.is_empty() {
+                    s.open_rdp_files(files);
+                }
+            });
+        });
+    });
 
     // Per Kommandozeile übergebene .rdp-Dateien importieren und öffnen (nach Layout-Aufbau)
     if !startup_files.is_empty() {

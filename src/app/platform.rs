@@ -64,3 +64,22 @@ pub fn set_dark_title_bar(hwnd: isize, dark: bool) {
     #[cfg(not(windows))]
     let _ = (hwnd, dark);
 }
+
+/// Holt das Hauptfenster nach vorn (z. B. wenn eine zweite Instanz eine Datei übergibt).
+pub fn bring_to_front(hwnd: isize) {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow};
+        let h = HWND(hwnd as *mut _);
+        // SAFETY: gültiges Fensterhandle des eigenen Prozesses.
+        unsafe {
+            if IsIconic(h).as_bool() {
+                let _ = ShowWindow(h, SW_RESTORE);
+            }
+            let _ = SetForegroundWindow(h);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = hwnd;
+}

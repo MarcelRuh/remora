@@ -165,6 +165,9 @@ export global Bridge {
     in-out property <bool> custom-titlebar;    // eigene Titelleiste aktiv (Windows)
     in-out property <bool> window-maximized;
     in-out property <bool> window-active: true;
+    // Maximieren-Button wird als HTMAXBUTTON gemeldet (Snap-Layouts): Hover/Druck kommen vom Fenster-Hook
+    in-out property <bool> max-button-hover;
+    in-out property <bool> max-button-pressed;
     in-out property <bool> rdp-captured;   // Tastatur wird an Remote-Sitzung geleitet
     in-out property <int> focus-request;          // Zähler: Fokus auf Bereich `focus-request-pane` legen
     in-out property <int> focus-request-pane;

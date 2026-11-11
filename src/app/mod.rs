@@ -324,6 +324,8 @@ fn init_native_window(weak: slint::Weak<AppWindow>, attempt: u32) {
                     match event {
                         titlebar::WindowEvent::Maximized(m) => b.set_window_maximized(m),
                         titlebar::WindowEvent::Active(a) => b.set_window_active(a),
+                        titlebar::WindowEvent::MaxHover(h) => b.set_max_button_hover(h),
+                        titlebar::WindowEvent::MaxPressed(p) => b.set_max_button_pressed(p),
                     }
                 });
             }),

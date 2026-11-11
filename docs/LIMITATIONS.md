@@ -48,7 +48,7 @@ Stand: Version 0.1.0. Die Tabelle unterscheidet zwischen **vollständig**, **tei
 
 ## Titelleiste und Installer
 
-* Die integrierte Titelleiste zeigt beim Überfahren des Maximieren-Buttons nicht das Snap-Layout-Menü von Windows 11 (dafür müsste der Button als `HTMAXBUTTON` gemeldet werden). Snap per Ziehen an den Bildschirmrand und `Win+Pfeil`/`Win+Z` funktionieren.
+* Snap-Layouts: Der Maximieren-Button wird als `HTMAXBUTTON` gemeldet, damit Windows 11 beim Überfahren das Layout-Menü zeigt. Geprüft sind Trefferprüfung und Klick (per Fensternachricht); das Menü selbst und der Hover-Effekt lassen sich nur mit echter Maus prüfen und sind noch nicht bestätigt.
 * Unter Windows 10 fehlt am oberen Fensterrand die 1-px-Rahmenlinie, weil der Beschriftungsbereich zur Client-Fläche wird.
 * Außerhalb von Windows wird die Standard-Titelleiste des Systems verwendet.
 * Der Installer ersetzt nicht die Standardzuordnung von `.rdp` (Windows schützt sie per `UserChoice`); Remora erscheint unter „Öffnen mit“.

@@ -8,7 +8,7 @@ Moderner, nativer Remote-Desktop-Manager für Windows 10/11 – geschrieben in *
 * Passwörter ausschließlich im Windows Credential Manager, TOFU-Zertifikatsprüfung, verschlüsselter Export mit Master-Passwort
 * Gestaltung im Stil des **ora-Stacks** ([Proxora](https://github.com/MarcelRuh/proxora), Dockora, Sambora): fast schwarze Flächen, Pink als Akzent, Orbitron-Überschriften, Neon-Sechseck-Logo
 * Dark Mode (Standard), Light Mode, Systemdesign, frei wählbare Akzentfarbe
-* In das Design integrierte Titelleiste mit nativem Fensterverhalten (Ziehen, Aero Snap, Doppelklick, Systemmenü)
+* In das Design integrierte Titelleiste mit nativem Fensterverhalten (Ziehen, Aero Snap, Snap-Layouts am Maximieren-Button, Doppelklick, Systemmenü)
 * Update-Hinweis bei neuen GitHub-Releases (abschaltbar; öffnet nur die Release-Seite, installiert nichts selbst)
 
 ## Installation
@@ -140,7 +140,7 @@ Stand der Prüfungen auf Windows 11 Pro x64 (Rust 1.99.1, MSVC 2022):
 | Echter Windows Credential Manager | Testeintrag schreiben/lesen/löschen (`tests/windows_credentials.rs`) |
 | **Live gegen Windows-RDP-Dienst** (127.0.0.2) | `cargo test --test live_rdp -- --ignored`: TCP, X.224-Aushandlung, TLS, Zertifikatsabfrage (SHA-256, TOFU), CredSSP/NLA bis zur Serverantwort `STATUS_LOGON_FAILURE` (bewusst mit nicht existierendem Konto) |
 | Oberfläche | App gestartet; Dashboard, Editor, Anmeldedialog, Fehlerüberlagerung, 2×2-Split und Einstellungen per Screenshot geprüft |
-| Titelleiste | Trefferprüfung per `WM_NCHITTEST` (Rand oben, Ziehfläche, Buttons), Minimieren, Maximieren/Wiederherstellen, Doppelklick, Schließen, Vollbild ein/aus (keine Ziehfläche im Vollbild) – bei 100 % Skalierung |
+| Titelleiste | Trefferprüfung per `WM_NCHITTEST` (Rand oben, Ziehfläche, Buttons), Maximieren-Button als `HTMAXBUTTON` (Klick maximiert/stellt wieder her), Minimieren, Maximieren/Wiederherstellen, Doppelklick, Schließen, Vollbild ein/aus (keine Ziehfläche im Vollbild) – bei 100 % Skalierung |
 | Design (ora-Stack) | Dashboard, Einstellungen (Allgemein, Darstellung, Über), Dunkel und Hell per Screenshot geprüft; Logo-Vorlage als Emblem in Sidebar und Fenstersymbol, vollständiges Logo unter „Über“, Programmsymbol in EXE und Setup (16–256 px aus der Vorlage); alter Standard-Akzent `#4c8dff` wird beim Laden auf `#ff006e` umgestellt (Test) |
 | Einzelinstanz | Zweiter Start ohne Datei holt das Fenster nach vorn, zweiter Start mit relativer `.rdp`-Datei übergibt sie an die laufende Instanz (Import, Anmeldedialog); geprüft mit portabler Kopie |
 | Update-Prüfung | Automatisch nach dem Start und per „Jetzt prüfen“ gegen die GitHub-API (ohne Release: „Remora ist aktuell“); Bewertung von Versionen, Vorabversionen und fremden URLs per Test |

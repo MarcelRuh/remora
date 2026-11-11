@@ -66,3 +66,5 @@ Der Remote-Mauszeiger wird nicht in den Framebuffer gerendert, sondern als Overl
 * Im Vollbild ist die Subclass passiv, damit Klicks am oberen Rand an die Remote-Sitzung gehen.
 
 Minimieren/Maximieren laufen über `ShowWindow`, Schließen über `WM_CLOSE` – also denselben Weg wie `Alt+F4` inklusive Rückfrage bei aktiven Sitzungen.
+
+Snap-Layouts (Windows 11): Der Maximieren-Button wird bei `WM_NCHITTEST` als `HTMAXBUTTON` gemeldet. Dadurch landen Mausereignisse dort als Nicht-Client-Nachrichten: `WM_NCMOUSEMOVE`/`WM_NCMOUSELEAVE` setzen den Hover-Zustand (`Bridge.max-button-hover`), `WM_NCLBUTTONDOWN`/`UP` werden selbst behandelt (nicht an `DefWindowProc`, die sonst einen klassischen Button zeichnen würde) und lösen Maximieren/Wiederherstellen aus.

@@ -16,6 +16,10 @@ pub const BUTTONS_WIDTH: f32 = 3.0 * 46.0;
 pub enum WindowEvent {
     Maximized(bool),
     Active(bool),
+    /// Maus über dem Maximieren-Button (der für Snap-Layouts als `HTMAXBUTTON` gemeldet wird).
+    MaxHover(bool),
+    /// Maximieren-Button gedrückt.
+    MaxPressed(bool),
 }
 
 /// Ergebnis der Trefferprüfung innerhalb der Client-Fläche.
@@ -24,6 +28,8 @@ pub enum Hit {
     Client,
     Caption,
     TopBorder,
+    /// Maximieren-/Wiederherstellen-Button (Windows 11 zeigt dort die Snap-Layouts).
+    MaxButton,
 }
 
 /// Reine Trefferlogik (testbar): `x`/`y` in physischen Client-Koordinaten.
@@ -35,7 +41,12 @@ pub fn hit_test(x: i32, y: i32, client_width: i32, scale: f32, frame: i32, maxim
         return Hit::TopBorder;
     }
     if (y as f32) < CAPTION_HEIGHT * scale {
-        if (x as f32) >= client_width as f32 - BUTTONS_WIDTH * scale {
+        let x = x as f32;
+        let right = client_width as f32;
+        let button = BUTTONS_WIDTH / 3.0 * scale;
+        if x >= right - 2.0 * button && x < right - button {
+            Hit::MaxButton
+        } else if x >= right - BUTTONS_WIDTH * scale {
             Hit::Client
         } else {
             Hit::Caption
@@ -53,12 +64,14 @@ mod imp {
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
     use windows::Win32::Graphics::Gdi::ScreenToClient;
     use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent};
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetClientRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
-        HTTOPRIGHT, IsZoomed, NCCALCSIZE_PARAMS, PostMessageW, SM_CXPADDEDBORDER, SM_CYSIZEFRAME, SW_MAXIMIZE,
-        SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
-        ShowWindow, WA_INACTIVE, WM_ACTIVATE, WM_CLOSE, WM_NCCALCSIZE, WM_NCDESTROY, WM_NCHITTEST, WM_SIZE,
+        GetClientRect, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT, HTLEFT, HTMAXBUTTON, HTRIGHT, HTTOP,
+        HTTOPLEFT, HTTOPRIGHT, IsZoomed, NCCALCSIZE_PARAMS, PostMessageW, SM_CXPADDEDBORDER, SM_CYSIZEFRAME,
+        SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SetWindowPos, ShowWindow, WA_INACTIVE, WM_ACTIVATE, WM_CLOSE, WM_NCCALCSIZE, WM_NCDESTROY, WM_NCHITTEST,
+        WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SIZE,
     };
 
     use super::{Hit, WindowEvent, hit_test};
@@ -69,6 +82,10 @@ mod imp {
 
     /// Aus im Vollbild: Dann gibt es weder Titelleiste noch Ziehfläche.
     static ENABLED: AtomicBool = AtomicBool::new(false);
+    /// Zustand des Maximieren-Buttons, der als Nicht-Client-Bereich (`HTMAXBUTTON`) gemeldet wird,
+    /// damit Windows 11 die Snap-Layouts anzeigt. Slint erhält dort keine Mausereignisse.
+    static MAX_HOVER: AtomicBool = AtomicBool::new(false);
+    static MAX_PRESSED: AtomicBool = AtomicBool::new(false);
 
     type EventCallback = Box<dyn Fn(WindowEvent)>;
 
@@ -164,8 +181,32 @@ mod imp {
                     return LRESULT(match hit {
                         Hit::TopBorder => HTTOP,
                         Hit::Caption => HTCAPTION,
+                        Hit::MaxButton => HTMAXBUTTON,
                         Hit::Client => HTCLIENT,
                     } as isize);
+                }
+                WM_NCMOUSEMOVE if ENABLED.load(Ordering::Relaxed) => {
+                    let over = wparam.0 as u32 == HTMAXBUTTON;
+                    set_max_hover(h, over);
+                    if !over {
+                        set_max_pressed(false);
+                    }
+                }
+                WM_NCMOUSELEAVE => {
+                    set_max_hover(h, false);
+                    set_max_pressed(false);
+                }
+                WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK if wparam.0 as u32 == HTMAXBUTTON => {
+                    // Nicht an DefWindowProc: die würde einen klassischen Button zeichnen.
+                    set_max_pressed(true);
+                    return LRESULT(0);
+                }
+                WM_NCLBUTTONUP if wparam.0 as u32 == HTMAXBUTTON => {
+                    if MAX_PRESSED.load(Ordering::Relaxed) {
+                        set_max_pressed(false);
+                        toggle_maximize(h.0 as isize);
+                    }
+                    return LRESULT(0);
                 }
                 WM_SIZE => match wparam.0 {
                     SIZE_MINIMIZED => {}
@@ -180,6 +221,30 @@ mod imp {
                 _ => {}
             }
             DefSubclassProc(h, msg, wparam, lparam)
+        }
+    }
+
+    fn set_max_hover(h: HWND, hover: bool) {
+        if MAX_HOVER.swap(hover, Ordering::Relaxed) == hover {
+            return;
+        }
+        if hover {
+            // WM_NCMOUSELEAVE anfordern, sobald die Maus den Button verlässt
+            let mut tme = TRACKMOUSEEVENT {
+                cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TME_LEAVE | TME_NONCLIENT,
+                hwndTrack: h,
+                dwHoverTime: 0,
+            };
+            // SAFETY: gültige Struktur für das eigene Fenster.
+            let _ = unsafe { TrackMouseEvent(&mut tme) };
+        }
+        notify(WindowEvent::MaxHover(hover));
+    }
+
+    fn set_max_pressed(pressed: bool) {
+        if MAX_PRESSED.swap(pressed, Ordering::Relaxed) != pressed {
+            notify(WindowEvent::MaxPressed(pressed));
         }
     }
 
@@ -253,6 +318,11 @@ mod tests {
         assert_eq!(hit_test(500, 20, 1000, 1.0, 8, false), Hit::Caption);
         assert_eq!(hit_test(1000 - 138, 20, 1000, 1.0, 8, false), Hit::Client);
         assert_eq!(hit_test(999, 20, 1000, 1.0, 8, false), Hit::Client);
+        // Buttons: Minimieren 862..908, Maximieren 908..954, Schließen 954..1000
+        assert_eq!(hit_test(907, 20, 1000, 1.0, 8, false), Hit::Client);
+        assert_eq!(hit_test(908, 20, 1000, 1.0, 8, false), Hit::MaxButton);
+        assert_eq!(hit_test(953, 20, 1000, 1.0, 8, true), Hit::MaxButton);
+        assert_eq!(hit_test(954, 20, 1000, 1.0, 8, false), Hit::Client);
         assert_eq!(hit_test(500, 34, 1000, 1.0, 8, false), Hit::Client);
     }
 
@@ -263,5 +333,7 @@ mod tests {
         assert_eq!(hit_test(500, 51, 1500, 1.5, 11, false), Hit::Client);
         assert_eq!(hit_test(1500 - 208, 30, 1500, 1.5, 11, false), Hit::Caption);
         assert_eq!(hit_test(1500 - 207, 30, 1500, 1.5, 11, false), Hit::Client);
+        assert_eq!(hit_test(1500 - 138, 30, 1500, 1.5, 11, false), Hit::MaxButton);
+        assert_eq!(hit_test(1500 - 69, 30, 1500, 1.5, 11, false), Hit::Client);
     }
 }

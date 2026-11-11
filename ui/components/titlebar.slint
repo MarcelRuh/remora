@@ -11,15 +11,20 @@ import { Bridge } from "../bridge.slint";
 component CaptionButton inherits Rectangle {
     in property <image> icon;
     in property <bool> is-close: false;
+    // Vom Fenster-Hook gemeldeter Zustand (Maximieren-Button, siehe titlebar.rs)
+    in property <bool> hover-external: false;
+    in property <bool> pressed-external: false;
+    private property <bool> hovered: ta.has-hover || hover-external;
+    private property <bool> pressed: ta.pressed || pressed-external;
     callback clicked();
     width: 46px;
-    background: ta.pressed ? (is-close ? #b4271a : Theme.text.with-alpha(14%))
-        : ta.has-hover ? (is-close ? #c42b1c : Theme.text.with-alpha(8%)) : transparent;
+    background: pressed ? (is-close ? #b4271a : Theme.text.with-alpha(14%))
+        : hovered ? (is-close ? #c42b1c : Theme.text.with-alpha(8%)) : transparent;
     Image {
         source: icon;
         width: 10px;
         height: 10px;
-        colorize: (is-close && ta.has-hover) ? #ffffff : Bridge.window-active ? Theme.text : Theme.text-faint;
+        colorize: (is-close && hovered) ? #ffffff : Bridge.window-active ? Theme.text : Theme.text-faint;
     }
     ta := TouchArea {
         clicked => { root.clicked(); }
@@ -73,6 +78,8 @@ export component TitleBar inherits Rectangle {
             }
             CaptionButton {
                 icon: Bridge.window-maximized ? Icons.win-restore : Icons.win-maximize;
+                hover-external: Bridge.max-button-hover;
+                pressed-external: Bridge.max-button-pressed;
                 clicked => { Bridge.window-toggle-maximize(); }
             }
             CaptionButton {

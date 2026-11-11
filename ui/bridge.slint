@@ -112,7 +112,20 @@ export struct SettingsData {
     confirm-close: bool,
     autostart: bool,
     check-updates: bool,
+    proxora-url: string,
+    proxora-username: string,
     windows-keys: int,       // 0 immer, 1 nur Vollbild, 2 nie
+}
+
+// VM aus Proxora in der Importliste
+export struct ProxoraVmItem {
+    key: string,
+    name: string,
+    address: string,
+    location: string,
+    running: bool,
+    selected: bool,
+    imported: bool,
 }
 
 export struct KnownHostItem {
@@ -158,6 +171,13 @@ export global Bridge {
     in-out property <string> update-version;
     in-out property <string> update-status;
     in-out property <bool> update-checking;
+    // Proxora-Import
+    in-out property <[ProxoraVmItem]> proxora-vms;
+    in-out property <string> proxora-status;
+    in-out property <bool> proxora-busy;
+    in-out property <bool> proxora-password-stored;
+    in-out property <string> proxora-password;
+    in-out property <string> proxora-fingerprint;
     in-out property <string> backend-info;
     in-out property <string> data-path;
     in-out property <bool> fullscreen;
@@ -240,6 +260,11 @@ export global Bridge {
     callback dismiss-toast();
     callback check-updates();
     callback open-update();
+    callback proxora-load();
+    callback proxora-toggle(int);
+    callback proxora-select-all(bool);
+    callback proxora-import();
+    callback proxora-forget-certificate();
 }
 
 // Zustand der modalen Dialoge (wird von Rust gesetzt).

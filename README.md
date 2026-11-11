@@ -10,6 +10,7 @@ Moderner, nativer Remote-Desktop-Manager für Windows 10/11 – geschrieben in *
 * Dark Mode (Standard), Light Mode, Systemdesign, frei wählbare Akzentfarbe
 * In das Design integrierte Titelleiste mit nativem Fensterverhalten (Ziehen, Aero Snap, Snap-Layouts am Maximieren-Button, Doppelklick, Systemmenü)
 * Update-Hinweis bei neuen GitHub-Releases (abschaltbar; öffnet nur die Release-Seite, installiert nichts selbst)
+* Import von VMs aus [Proxora](https://github.com/MarcelRuh/proxora) (Einstellungen → Proxora): Anmeldung inkl. 2FA, Auswahl der VMs, Ordner je Host, erneuter Import aktualisiert IP-Adressen
 
 ## Installation
 
@@ -96,6 +97,7 @@ Standard-Titelleiste von Windows statt der integrierten: `REMORA_NATIVE_TITLEBAR
 | Vollbild | `F11` bzw. in der Sitzung `Strg+Alt+Pause` |
 | Fenster | Titelleiste ziehen, an den Bildschirmrand ziehen (Snap), Doppelklick maximiert, Rechtsklick öffnet das Systemmenü |
 | Import/Export | Einstellungen → Import/Export; `.rdp` auch über die Sidebar und das Kontextmenü |
+| Proxora | Einstellungen → Proxora: Adresse, Benutzer, Passwort, „VMs laden“, VMs auswählen, „Ausgewählte importieren“ |
 | `.rdp` öffnen | `remora.exe C:\Pfad\verbindung.rdp` (bzw. „Öffnen mit“ nach Installation) importiert (ohne Duplikate) und verbindet – läuft Remora schon, übernimmt das offene Fenster die Datei |
 
 Tastenkombinationen der Anwendung (`Strg+T/W/Tab/F`, `F11`) gelten nur, solange keine Remote-Sitzung die Tastatur besitzt – sonst gehen sie an den Server.
@@ -136,7 +138,7 @@ Stand der Prüfungen auf Windows 11 Pro x64 (Rust 1.99.1, MSVC 2022):
 | `cargo build` / `cargo build --release` | erfolgreich |
 | `cargo fmt --all -- --check` | sauber |
 | `cargo clippy --all-targets -- -D warnings` | keine Warnungen |
-| `cargo test` | 68 Tests bestanden (Datenbank, Ordnerlogik, Suche/Baum, Sitzungs-/Split-Verwaltung, Renderer/Double-Buffer, Maus-Mapping, Tastatur-Entscheidungen, Titelleisten-Trefferlogik, `.rdp`-Import/Export, Vault, TOFU, Einstellungen, IronRDP-Konfiguration) |
+| `cargo test` | 76 Tests bestanden (Proxora-Client gegen nachgebaute API über HTTP und HTTPS: Cookie, 2FA, Fehlercodes, Zertifikats-Pinning; Datenbank, Ordnerlogik, Suche/Baum, Sitzungs-/Split-Verwaltung, Renderer/Double-Buffer, Maus-Mapping, Tastatur-Entscheidungen, Titelleisten-Trefferlogik, `.rdp`-Import/Export, Vault, TOFU, Einstellungen, IronRDP-Konfiguration) |
 | Echter Windows Credential Manager | Testeintrag schreiben/lesen/löschen (`tests/windows_credentials.rs`) |
 | **Live gegen Windows-RDP-Dienst** (127.0.0.2) | `cargo test --test live_rdp -- --ignored`: TCP, X.224-Aushandlung, TLS, Zertifikatsabfrage (SHA-256, TOFU), CredSSP/NLA bis zur Serverantwort `STATUS_LOGON_FAILURE` (bewusst mit nicht existierendem Konto) |
 | Oberfläche | App gestartet; Dashboard, Editor, Anmeldedialog, Fehlerüberlagerung, 2×2-Split und Einstellungen per Screenshot geprüft |
@@ -144,6 +146,7 @@ Stand der Prüfungen auf Windows 11 Pro x64 (Rust 1.99.1, MSVC 2022):
 | Design (ora-Stack) | Dashboard, Einstellungen (Allgemein, Darstellung, Über), Dunkel und Hell per Screenshot geprüft; Logo-Vorlage als Emblem in Sidebar und Fenstersymbol, vollständiges Logo unter „Über“, Programmsymbol in EXE und Setup (16–256 px aus der Vorlage); alter Standard-Akzent `#4c8dff` wird beim Laden auf `#ff006e` umgestellt (Test) |
 | Einzelinstanz | Zweiter Start ohne Datei holt das Fenster nach vorn, zweiter Start mit relativer `.rdp`-Datei übergibt sie an die laufende Instanz (Import, Anmeldedialog); geprüft mit portabler Kopie |
 | Update-Prüfung | Automatisch nach dem Start und per „Jetzt prüfen“ gegen die GitHub-API (ohne Release: „Remora ist aktuell“); Bewertung von Versionen, Vorabversionen und fremden URLs per Test |
+| Proxora-Import | Gegen lokalen API-Nachbau: VMs laden (inkl. Hinweis auf unverschlüsseltes http), Auswahl, Import in Ordner „Proxora/<Host>“, erneuter Import ohne Duplikate; Test-Passwort danach aus dem Credential Manager entfernt. **Nicht** gegen eine echte Proxora-Instanz geprüft |
 | Installer | Stille Installation nach `C:\Program Files\Remora RDP`, Startmenü-Verknüpfung, Uninstall-Eintrag, `.rdp`-„Öffnen mit“, Start der installierten EXE; stille Deinstallation entfernt Ordner, Verknüpfung, Dateizuordnung und Uninstall-Eintrag, Benutzerdaten bleiben erhalten |
 
 **Noch nicht verifiziert:** eine vollständig angemeldete Sitzung (Bilddarstellung, Eingaben, Zwischenablage, Audio, dynamische Auflösung, Laufwerke/Drucker, Gateway). Eine erfolgreiche Anmeldung an `127.0.0.2` mit dem eigenen Konto würde auf Windows 10/11 Pro die laufende Sitzung übernehmen; für diese Tests wird ein separater RDP-Server (VM, Windows Server) empfohlen. Die Titelleiste ist nur bei 100 % Skalierung und auf Windows 11 geprüft (nicht: Windows 10, andere DPI-Stufen, Mehrschirm mit gemischter Skalierung).

@@ -2,7 +2,7 @@
 
 import { Palette } from "std-widgets.slint";
 import { Theme, Icons } from "themes/theme.slint";
-import { Bridge, Dialogs, TreeItem, ConnCard, TabItem, PaneItem, EditorData, SettingsData, KnownHostItem, Toast } from "bridge.slint";
+import { Bridge, Dialogs, TreeItem, ConnCard, TabItem, PaneItem, EditorData, SettingsData, KnownHostItem, Toast, ProxoraVmItem } from "bridge.slint";
 import { Sidebar } from "components/sidebar.slint";
 import { TabBar } from "components/tabbar.slint";
 import { RdpPane } from "components/rdp_view.slint";
@@ -13,7 +13,7 @@ import { SettingsPage } from "pages/settings.slint";
 import { ConnectionEditor } from "dialogs/editor.slint";
 import { CredentialsDialog, CertificateDialog, ConfirmDialog, TextInputDialog, VaultDialog } from "dialogs/simple.slint";
 
-export { Bridge, Dialogs, Theme, TreeItem, ConnCard, TabItem, PaneItem, EditorData, SettingsData, KnownHostItem, Toast }
+export { Bridge, Dialogs, Theme, TreeItem, ConnCard, TabItem, PaneItem, EditorData, SettingsData, KnownHostItem, Toast, ProxoraVmItem }
 
 component SplitHandle inherits Rectangle {
     in property <bool> vertical;   // true = senkrechte Linie (verschiebt x)

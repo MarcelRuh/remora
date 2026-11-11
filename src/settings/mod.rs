@@ -90,6 +90,11 @@ pub struct AppSettings {
     pub autostart: bool,
     /// Beim Start auf neue Versionen (GitHub-Releases) prüfen.
     pub check_updates: bool,
+    /// Proxora-Import: Adresse, Benutzer und bestätigter Zertifikats-Fingerabdruck
+    /// (nur bei selbstsignierten Zertifikaten). Das Passwort liegt im Credential Manager.
+    pub proxora_url: String,
+    pub proxora_username: String,
+    pub proxora_fingerprint: String,
     pub windows_keys: WindowsKeyMode,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
@@ -117,6 +122,9 @@ impl Default for AppSettings {
             confirm_close_active: true,
             autostart: false,
             check_updates: true,
+            proxora_url: String::new(),
+            proxora_username: String::new(),
+            proxora_fingerprint: String::new(),
             windows_keys: WindowsKeyMode::FullscreenOnly,
             sidebar_width: 280.0,
             sidebar_collapsed: false,

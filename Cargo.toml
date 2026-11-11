@@ -59,8 +59,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
 # Update-Prüfung (GitHub-Releases); reqwest und rustls/aws-lc-rs sind über IronRDP/sspi ohnehin im Projekt
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots-no-provider"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots-no-provider", "json"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+rustls-native-certs = "0.8"
 toml = "1"
 directories = "6"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
@@ -118,7 +119,13 @@ codegen-units = 4
 strip = "debuginfo"
 panic = "unwind"
 
+# Nur Zeilentabellen (Backtraces) statt voller Debug-Infos: hält target/debug klein,
+# sonst wächst es durch IronRDP & Co. auf Dutzende GB.
+[profile.dev]
+debug = "line-tables-only"
+
 # Decoder und Bildkonvertierung auch im Debug-Build optimieren, sonst ist die
 # Remote-Darstellung im Entwicklungsmodus unnötig träge.
 [profile.dev.package."*"]
 opt-level = 2
+debug = false

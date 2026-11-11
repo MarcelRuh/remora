@@ -68,3 +68,7 @@ Der Remote-Mauszeiger wird nicht in den Framebuffer gerendert, sondern als Overl
 Minimieren/Maximieren laufen über `ShowWindow`, Schließen über `WM_CLOSE` – also denselben Weg wie `Alt+F4` inklusive Rückfrage bei aktiven Sitzungen.
 
 Snap-Layouts (Windows 11): Der Maximieren-Button wird bei `WM_NCHITTEST` als `HTMAXBUTTON` gemeldet. Dadurch landen Mausereignisse dort als Nicht-Client-Nachrichten: `WM_NCMOUSEMOVE`/`WM_NCMOUSELEAVE` setzen den Hover-Zustand (`Bridge.max-button-hover`), `WM_NCLBUTTONDOWN`/`UP` werden selbst behandelt (nicht an `DefWindowProc`, die sonst einen klassischen Button zeichnen würde) und lösen Maximieren/Wiederherstellen aus.
+
+## Proxora-Import
+
+`services::proxora` spricht die Proxora-API (`/api/auth/login`, `/api/dashboard/guests?kind=vm`, `/api/dashboard/guest-ips`, `/api/auth/logout`) mit reqwest/rustls in einem eigenen Thread mit kleiner Tokio-Laufzeit. Das Sitzungs-Cookie lebt nur für die Dauer eines Abrufs. TLS prüft gegen den Windows-Zertifikatspeicher (`rustls-native-certs`); ein eigener `ServerCertVerifier` akzeptiert zusätzlich genau den vom Benutzer bestätigten Fingerabdruck und meldet sonst den vorgelegten Fingerabdruck zur Rückfrage. `app::proxora_import` verbindet das mit der Oberfläche (Bestätigungs- und 2FA-Dialog, Auswahl, Anlage in Ordner „Proxora/<Host>“). Das Passwort liegt im Credential Manager unter `Remora RDP/proxora/password`.

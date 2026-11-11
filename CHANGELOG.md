@@ -13,6 +13,7 @@ Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](htt
 - In das Design integrierte Titelleiste mit Snap-Layouts am Maximieren-Button (Windows 11).
 - Einzelinstanz: Ein weiterer Start (z. B. Doppelklick auf eine `.rdp`-Datei) übergibt die Datei an das laufende Fenster.
 - Update-Hinweis bei neuen GitHub-Releases (abschaltbar; öffnet nur die Release-Seite).
+- Import von VMs aus Proxora (Einstellungen → Proxora) mit 2FA, Zertifikats-Pinning und Aktualisierung geänderter IP-Adressen.
 - Installer (Inno Setup) nach `C:\Program Files\Remora RDP` mit optionaler „Öffnen mit“-Zuordnung für `.rdp`.
 - CI (Format, Clippy, Tests) und automatische Releases mit Installer und portabler ZIP.
 
@@ -24,6 +25,9 @@ Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](htt
 
 ### Behoben
 
+- Sidebar: Der Bereich „Gruppen“ dehnte sich und schob die Tag-Chips nach unten.
+- Statusleiste: Verbindungsanzahl wurde nach Änderungen nicht aktualisiert („1 Verbindungen“).
+- Verbindungseditor: Eingabefelder im Gateway-Reiter wurden in die Höhe gezogen.
 - „Über die Anwendung“ zeigte als Slint-Version die Hauptversion von Remora.
 
 ## [0.1.0] – 2026-11-10

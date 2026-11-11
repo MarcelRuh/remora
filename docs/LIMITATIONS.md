@@ -62,3 +62,12 @@ Stand: Version 0.1.0. Die Tabelle unterscheidet zwischen **vollständig**, **tei
 * Die Proxora-Hintergrundeffekte (schwebende Farbflächen, Weichzeichner) sind nicht übernommen.
 * Light Mode ist nur auf der Einstellungsseite per Screenshot geprüft.
 * Das Programmsymbol stammt in allen Größen aus der detailreichen Logo-Vorlage. Bei 16–20 px (Titelleiste, kleine Explorer-Ansicht, Infobereich) sind Monitore und „R“ nur noch als Farbfläche im Sechseck erkennbar.
+
+## Proxora-Import
+
+* Importiert werden nur VMs (keine LXC-Container, keine Vorlagen). Proxora liefert kein Betriebssystem, daher wählst du die RDP-tauglichen VMs selbst aus.
+* Die IP-Adresse stammt aus Proxora (QEMU-Gast-Agent bzw. VM-Konfiguration). Ohne IP wird der VM-Name als Hostname eingetragen.
+* Wiedererkennung über eine Zeile `proxora:<hostId>:<vmid>` in der Beschreibung der Verbindung. Wird sie entfernt, legt ein erneuter Import die Verbindung neu an.
+* `http://`-Adressen sind erlaubt (z. B. Proxora im LAN ohne TLS), Remora weist dann auf die unverschlüsselte Übertragung hin.
+* Selbstsignierte Zertifikate werden nur nach Bestätigung des SHA-256-Fingerabdrucks akzeptiert; danach gilt ausschließlich dieses Zertifikat (Pinning). Ändert es sich, fragt Remora erneut nach.
+* Geprüft gegen einen Nachbau der Proxora-API (Tests und UI), noch nicht gegen eine echte Proxora-Instanz.

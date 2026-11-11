@@ -299,6 +299,7 @@ export component CheckField inherits Rectangle {
     in-out property <bool> checked;
     callback toggled();
     min-height: 24px;
+    vertical-stretch: 0;
     opacity: enabled ? 1 : 0.45;
     accessible-role: checkbox;
     accessible-checked: checked;

@@ -79,6 +79,7 @@ export component ConnectionEditor inherits Modal {
             // ------------------------------------------------ Allgemein
             if section == 0 : VerticalLayout {
                 spacing: 14px;
+                alignment: start;
                 HorizontalLayout {
                     spacing: 12px;
                     Rectangle {
@@ -212,6 +213,7 @@ export component ConnectionEditor inherits Modal {
             // ------------------------------------------------ Anzeige
             if section == 1 : VerticalLayout {
                 spacing: 14px;
+                alignment: start;
                 VerticalLayout {
                     spacing: 5px;
                     FieldLabel { text: "Auflösung"; }
@@ -257,6 +259,7 @@ export component ConnectionEditor inherits Modal {
             // ------------------------------------------------ Ressourcen
             if section == 2 : VerticalLayout {
                 spacing: 4px;
+                alignment: start;
                 ToggleRow {
                     title: "Zwischenablage";
                     description: "Text, Bilder und Dateien zwischen lokalem Rechner und Sitzung austauschen.";
@@ -282,6 +285,7 @@ export component ConnectionEditor inherits Modal {
             // ------------------------------------------------ Gateway
             if section == 3 : VerticalLayout {
                 spacing: 14px;
+                alignment: start;
                 ToggleRow {
                     title: "RD-Gateway verwenden";
                     description: "Verbindung über ein Remote Desktop Gateway (HTTPS/WebSocket, Fallback RPC-over-HTTP).";
@@ -318,6 +322,7 @@ export component ConnectionEditor inherits Modal {
             // ------------------------------------------------ Erweitert
             if section == 4 : VerticalLayout {
                 spacing: 14px;
+                alignment: start;
                 ToggleRow {
                     title: "Network Level Authentication (NLA / CredSSP)";
                     description: "Empfohlen. Anmeldung erfolgt vor dem Aufbau der Sitzung.";

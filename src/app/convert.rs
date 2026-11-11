@@ -288,8 +288,6 @@ pub fn settings_to_data(s: &AppSettings) -> SettingsData {
         confirm_close: s.confirm_close_active,
         autostart: s.autostart,
         check_updates: s.check_updates,
-        proxora_url: s.proxora_url.clone().into(),
-        proxora_username: s.proxora_username.clone().into(),
         windows_keys: s.windows_keys.index(),
     }
 }
@@ -312,8 +310,6 @@ pub fn apply_settings_data(d: &SettingsData, s: &mut AppSettings) {
     s.confirm_close_active = d.confirm_close;
     s.autostart = d.autostart;
     s.check_updates = d.check_updates;
-    s.proxora_url = d.proxora_url.trim().to_owned();
-    s.proxora_username = d.proxora_username.trim().to_owned();
     s.windows_keys = WindowsKeyMode::from_index(d.windows_keys);
 }
 

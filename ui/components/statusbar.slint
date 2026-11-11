@@ -83,7 +83,7 @@ export component StatusBar inherits Rectangle {
             }
             TouchArea {
                 mouse-cursor: pointer;
-                clicked => { Bridge.open-update(); }
+                clicked => { Bridge.install-update(); }
             }
         }
         if Bridge.rdp-captured : StatusSegment {

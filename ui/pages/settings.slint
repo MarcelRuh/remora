@@ -1,9 +1,9 @@
 // Einstellungen als eigene Seite mit Navigation.
 
-import { ComboBox, SpinBox, ScrollView, ListView, LineEdit } from "std-widgets.slint";
+import { ComboBox, SpinBox, ScrollView, ListView } from "std-widgets.slint";
 import { Theme, Icons } from "../themes/theme.slint";
 import { Bridge, Dialogs, SettingsData } from "../bridge.slint";
-import { IconButton, ToggleRow, Segmented, FieldLabel, SectionLabel, PrimaryButton, GhostButton, Card, Divider, CheckField, Badge, StatusDot } from "../components/basics.slint";
+import { IconButton, ToggleRow, Segmented, FieldLabel, SectionLabel, PrimaryButton, GhostButton, Card, Divider } from "../components/basics.slint";
 
 component NavEntry inherits Rectangle {
     in property <image> icon;
@@ -138,7 +138,6 @@ export component SettingsPage inherits Rectangle {
                 NavEntry { icon: Icons.shield; label: "Sicherheit"; selected: Dialogs.settings-section == 3; clicked => { Dialogs.settings-section = 3; } }
                 NavEntry { icon: Icons.keyboard; label: "Tastenkombinationen"; selected: Dialogs.settings-section == 4; clicked => { Dialogs.settings-section = 4; } }
                 NavEntry { icon: Icons.upload; label: "Import / Export"; selected: Dialogs.settings-section == 5; clicked => { Dialogs.settings-section = 5; } }
-                NavEntry { icon: Icons.server; label: "Proxora"; selected: Dialogs.settings-section == 7; clicked => { Dialogs.settings-section = 7; } }
                 NavEntry { icon: Icons.info; label: "Über die Anwendung"; selected: Dialogs.settings-section == 6; clicked => { Dialogs.settings-section = 6; } }
             }
             Rectangle {
@@ -445,129 +444,6 @@ export component SettingsPage inherits Rectangle {
                     }
                 }
 
-                // ---------------------------------------- Proxora
-                if Dialogs.settings-section == 7 : VerticalLayout {
-                    spacing: 28px;
-                    max-width: 720px;
-                    SettingGroup {
-                        title: "Proxora-Zugang";
-                        description: "VMs aus Proxora (ora-Stack) als RDP-Verbindungen übernehmen. Das Passwort wird nur im Windows Credential Manager gespeichert.";
-                        VerticalLayout {
-                            spacing: 5px;
-                            FieldLabel { text: "Adresse"; }
-                            LineEdit {
-                                text: s.proxora-url;
-                                placeholder-text: "https://proxora.lan:3000";
-                                edited(t) => { s.proxora-url = t; }
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 12px;
-                            VerticalLayout {
-                                spacing: 5px;
-                                FieldLabel { text: "Benutzer"; }
-                                LineEdit {
-                                    text: s.proxora-username;
-                                    placeholder-text: "admin";
-                                    edited(t) => { s.proxora-username = t; }
-                                }
-                            }
-                            VerticalLayout {
-                                spacing: 5px;
-                                FieldLabel { text: "Passwort"; }
-                                LineEdit {
-                                    input-type: password;
-                                    text <=> Bridge.proxora-password;
-                                    placeholder-text: Bridge.proxora-password-stored ? "•••••••• (gespeichert)" : "Passwort";
-                                }
-                            }
-                        }
-                        if Bridge.proxora-fingerprint != "" : HorizontalLayout {
-                            spacing: 10px;
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                spacing: 2px;
-                                Text { text: "Bestätigtes Zertifikat (SHA-256)"; color: Theme.text-muted; font-size: Theme.font-sm; }
-                                Text { text: Bridge.proxora-fingerprint; color: Theme.text-faint; font-size: Theme.font-xs; wrap: word-wrap; }
-                            }
-                            GhostButton {
-                                text: "Vergessen";
-                                clicked => { Bridge.proxora-forget-certificate(); }
-                            }
-                        }
-                        HorizontalLayout {
-                            spacing: 10px;
-                            Text {
-                                text: Bridge.proxora-status;
-                                color: Theme.text-muted;
-                                font-size: Theme.font-sm;
-                                wrap: word-wrap;
-                                vertical-alignment: center;
-                                horizontal-stretch: 1;
-                            }
-                            PrimaryButton {
-                                text: Bridge.proxora-busy ? "Lädt …" : "VMs laden";
-                                has-icon: true;
-                                icon: Icons.refresh;
-                                enabled: !Bridge.proxora-busy && s.proxora-url != "" && s.proxora-username != "";
-                                clicked => {
-                                    commit();
-                                    Bridge.proxora-load();
-                                }
-                            }
-                        }
-                    }
-                    if Bridge.proxora-vms.length > 0 : SettingGroup {
-                        title: "VMs";
-                        description: "Ausgewählte VMs werden im Ordner „Proxora“ (Unterordner je Host) angelegt. Bereits importierte VMs werden aktualisiert, wenn sich die IP-Adresse geändert hat.";
-                        HorizontalLayout {
-                            spacing: 10px;
-                            alignment: start;
-                            GhostButton { text: "Alle"; clicked => { Bridge.proxora-select-all(true); } }
-                            GhostButton { text: "Keine"; clicked => { Bridge.proxora-select-all(false); } }
-                        }
-                        Divider {}
-                        for vm[i] in Bridge.proxora-vms : HorizontalLayout {
-                            spacing: 10px;
-                            height: 34px;
-                            CheckField {
-                                text: vm.name;
-                                checked: vm.selected;
-                                width: 220px;
-                                toggled => { Bridge.proxora-toggle(i); }
-                            }
-                            Text {
-                                text: vm.address != "" ? vm.address : "keine IP gefunden";
-                                color: vm.address != "" ? Theme.text : Theme.warning;
-                                font-size: Theme.font-sm;
-                                vertical-alignment: center;
-                                width: 150px;
-                            }
-                            Text {
-                                text: vm.location;
-                                color: Theme.text-faint;
-                                font-size: Theme.font-xs;
-                                vertical-alignment: center;
-                                overflow: elide;
-                                horizontal-stretch: 1;
-                            }
-                            if vm.imported : Badge { text: "importiert"; tint: Theme.kicker; y: (parent.height - self.height) / 2; }
-                            StatusDot { status: vm.running ? 2 : 0; y: (parent.height - self.height) / 2; }
-                        }
-                        Divider {}
-                        HorizontalLayout {
-                            alignment: end;
-                            PrimaryButton {
-                                text: "Ausgewählte importieren";
-                                has-icon: true;
-                                icon: Icons.download;
-                                enabled: !Bridge.proxora-busy;
-                                clicked => { Bridge.proxora-import(); }
-                            }
-                        }
-                    }
-                }
-
                 // ---------------------------------------- Über
                 if Dialogs.settings-section == 6 : VerticalLayout {
                     spacing: 20px;
@@ -610,14 +486,25 @@ export component SettingsPage inherits Rectangle {
                                     wrap: word-wrap;
                                 }
                             }
-                            if Bridge.update-version != "" : PrimaryButton {
+                            if Bridge.update-version != "" && Bridge.update-installable : PrimaryButton {
+                                text: "Jetzt installieren";
+                                has-icon: true;
+                                icon: Icons.download;
+                                enabled: !Bridge.update-checking;
+                                clicked => { Bridge.install-update(); }
+                            }
+                            if Bridge.update-version != "" && !Bridge.update-installable : PrimaryButton {
                                 text: "Release öffnen";
                                 has-icon: true;
                                 icon: Icons.download;
                                 clicked => { Bridge.open-update(); }
                             }
+                            if Bridge.update-version != "" && Bridge.update-installable : GhostButton {
+                                text: "Release-Seite";
+                                clicked => { Bridge.open-update(); }
+                            }
                             GhostButton {
-                                text: Bridge.update-checking ? "Prüfe …" : "Jetzt prüfen";
+                                text: Bridge.update-checking ? "Bitte warten …" : "Jetzt prüfen";
                                 enabled: !Bridge.update-checking;
                                 clicked => { Bridge.check-updates(); }
                             }

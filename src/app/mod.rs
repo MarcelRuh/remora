@@ -7,11 +7,11 @@ pub mod convert;
 pub mod instance;
 pub mod keyboard;
 pub mod platform;
-mod proxora_import;
 pub mod titlebar;
+mod updater;
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -66,15 +66,13 @@ enum ConfirmAction {
     DeleteFolder(FolderId),
     CloseTab(usize),
     QuitApp,
-    /// Zertifikat der Proxora-Instanz (SHA-256) dauerhaft vertrauen.
-    TrustProxora(String),
+    /// Heruntergeladenes und geprüftes Setup starten, danach Remora beenden.
+    InstallUpdate(std::path::PathBuf),
 }
 
 enum TextAction {
     NewFolder(Option<FolderId>),
     RenameFolder(FolderId),
-    /// 2FA-Code für die Proxora-Anmeldung (Ticket aus dem ersten Schritt).
-    ProxoraTotp(String),
 }
 
 enum VaultAction {
@@ -128,12 +126,10 @@ pub struct AppState {
     pending_vault: Option<VaultAction>,
     editor_base: Option<Connection>,
     toast_until: Option<Instant>,
-    /// Release-Seite einer gefundenen neueren Version.
-    update_url: Option<String>,
-    update_checking: bool,
-    proxora_vms: Vec<crate::services::proxora::ProxoraVm>,
-    proxora_selected: HashSet<String>,
-    proxora_busy: bool,
+    /// Gefundene neuere Version (Update-Prüfung).
+    update_info: Option<crate::services::update::UpdateInfo>,
+    /// Prüfung oder Download läuft.
+    update_busy: bool,
     hwnd: isize,
     quitting: bool,
 }
@@ -190,11 +186,8 @@ pub fn run(
         pending_vault: None,
         editor_base: None,
         toast_until: None,
-        update_url: None,
-        update_checking: false,
-        proxora_vms: Vec::new(),
-        proxora_selected: HashSet::new(),
-        proxora_busy: false,
+        update_info: None,
+        update_busy: false,
         hwnd: 0,
         quitting: false,
     };
@@ -233,7 +226,6 @@ pub fn run(
         s.refresh_connections();
         s.refresh_sessions_ui();
         s.refresh_known_hosts();
-        s.proxora_init_ui();
         let data = settings_to_data(&s.settings);
         ui.global::<Dialogs>().set_settings(data);
     }
@@ -675,11 +667,7 @@ fn wire_callbacks(ui: &AppWindow) {
     b.on_dismiss_toast(|| with_app(|s| s.hide_toast()));
     b.on_check_updates(|| with_app(|s| s.start_update_check(true)));
     b.on_open_update(|| with_app(|s| s.open_update()));
-    b.on_proxora_load(|| with_app(|s| s.proxora_load(None)));
-    b.on_proxora_toggle(|i| with_app(move |s| s.proxora_toggle(i.max(0) as usize)));
-    b.on_proxora_select_all(|all| with_app(move |s| s.proxora_select_all(all)));
-    b.on_proxora_import(|| with_app(|s| s.proxora_import()));
-    b.on_proxora_forget_certificate(|| with_app(|s| s.proxora_forget_certificate()));
+    b.on_install_update(|| with_app(|s| s.install_update()));
 
     ui.on_sidebar_resized(|w| {
         with_app(move |s| {
@@ -1736,11 +1724,11 @@ impl AppState {
                 self.refresh_connections();
             }
             ConfirmAction::CloseTab(index) => self.close_tab(index),
+            ConfirmAction::InstallUpdate(path) => self.run_installer(&path),
             ConfirmAction::QuitApp => {
                 self.quitting = true;
                 let _ = slint::quit_event_loop();
             }
-            ConfirmAction::TrustProxora(fingerprint) => self.proxora_trust(fingerprint),
         }
     }
 
@@ -1764,10 +1752,6 @@ impl AppState {
         let result = match action {
             TextAction::NewFolder(parent) => self.conns.db().create_folder(&value, parent).map(|_| ()),
             TextAction::RenameFolder(id) => self.conns.db().rename_folder(id, &value),
-            TextAction::ProxoraTotp(ticket) => {
-                self.proxora_load(Some(crate::services::proxora::TotpAnswer { ticket, code: value }));
-                return;
-            }
         };
         if let Err(e) = result {
             self.toast(&e.to_string(), 3);
@@ -2094,76 +2078,6 @@ impl AppState {
                     self.pending_vault = Some(VaultAction::Import(text));
                 }
             }
-        }
-    }
-
-    // ------------------------------------------------------------ Updates
-
-    /// Prüft im Hintergrund auf eine neuere Version. `manual`: Ergebnis auch anzeigen, wenn
-    /// keine neuere Version existiert oder die Prüfung fehlschlägt.
-    fn start_update_check(&mut self, manual: bool) {
-        if self.update_checking {
-            return;
-        }
-        self.update_checking = true;
-        self.with_ui(|ui| {
-            let b = ui.global::<Bridge>();
-            b.set_update_checking(true);
-            b.set_update_status("".into());
-        });
-        let spawned = std::thread::Builder::new().name("remora-update".into()).spawn(move || {
-            let result = crate::services::update::check(env!("CARGO_PKG_VERSION"));
-            let _ = slint::invoke_from_event_loop(move || with_app(move |s| s.finish_update_check(result, manual)));
-        });
-        if let Err(e) = spawned {
-            self.finish_update_check(Err(e.into()), manual);
-        }
-    }
-
-    fn finish_update_check(
-        &mut self,
-        result: anyhow::Result<Option<crate::services::update::UpdateInfo>>,
-        manual: bool,
-    ) {
-        self.update_checking = false;
-        let checked_at = chrono::Local::now().format("%H:%M").to_string();
-        // `version`: None = Anzeige unverändert lassen (Fehler), Some("") = keine neuere Version
-        let (version, status): (Option<String>, String) = match result {
-            Ok(Some(info)) => {
-                tracing::info!(version = %info.version, "Neue Version verfügbar");
-                self.update_url = Some(info.url);
-                (Some(info.version.to_string()), format!("Geprüft um {checked_at}."))
-            }
-            Ok(None) => {
-                self.update_url = None;
-                (
-                    Some(String::new()),
-                    format!("Remora ist aktuell (geprüft um {checked_at})."),
-                )
-            }
-            Err(e) => {
-                tracing::warn!(error = %format!("{e:#}"), "Update-Prüfung fehlgeschlagen");
-                let msg = if manual {
-                    format!("Prüfung fehlgeschlagen: {e}")
-                } else {
-                    String::new()
-                };
-                (None, msg)
-            }
-        };
-        self.with_ui(|ui| {
-            let b = ui.global::<Bridge>();
-            b.set_update_checking(false);
-            if let Some(v) = version {
-                b.set_update_version(v.into());
-            }
-            b.set_update_status(status.into());
-        });
-    }
-
-    fn open_update(&mut self) {
-        if let Some(url) = &self.update_url {
-            platform::open_url(url);
         }
     }
 

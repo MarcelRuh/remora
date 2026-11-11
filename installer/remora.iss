@@ -91,8 +91,16 @@ Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command";
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Automatisches Update aus Remora (/SILENT /RELAUNCH): danach wieder starten, ohne Administratorrechte
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: ShouldRelaunch
 
 [Code]
+function ShouldRelaunch: Boolean;
+begin
+  { Nur wenn Remora das Setup selbst für ein Update gestartet hat }
+  Result := WizardSilent and (Pos('/RELAUNCH', UpperCase(GetCmdTail)) > 0);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then

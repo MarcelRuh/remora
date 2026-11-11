@@ -4,6 +4,17 @@ Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.2.1] – 2026-11-11
+
+### Hinzugefügt
+
+- Eingebauter Updater: „Jetzt installieren“ (Über die Anwendung bzw. Hinweis in der Statusleiste) lädt das Setup des neuen Releases, prüft seine SHA-256-Summe gegen `SHA256SUMS.txt`, installiert nach Rückfrage still und startet Remora danach neu. Portable Kopien öffnen weiterhin nur die Release-Seite.
+- Releases enthalten `SHA256SUMS.txt` für Setup und portable ZIP.
+
+### Entfernt
+
+- Proxora-Import (Einstellungen → Proxora) aus 0.2.0.
+
 ## [0.2.0] – 2026-11-11
 
 ### Hinzugefügt

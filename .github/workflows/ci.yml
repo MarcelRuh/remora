@@ -61,5 +61,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $setup = Get-ChildItem target/installer/*.exe | Select-Object -First 1
-          Compress-Archive -Path target/release/remora.exe, LICENSE, assets/fonts/OFL.txt -DestinationPath "target/Remora-RDP-${{ github.ref_name }}-portable-x64.zip"
-          gh release create "${{ github.ref_name }}" $setup.FullName "target/Remora-RDP-${{ github.ref_name }}-portable-x64.zip" --title "Remora RDP ${{ github.ref_name }}" --notes-file release-notes.md
+          $zip = "target/Remora-RDP-${{ github.ref_name }}-portable-x64.zip"
+          Compress-Archive -Path target/release/remora.exe, LICENSE, assets/fonts/OFL.txt -DestinationPath $zip
+          # Prüfsummen für den eingebauten Updater (sha256sum-Format: "<hex>  <name>")
+          $sums = foreach ($f in @($setup.FullName, (Resolve-Path $zip).Path)) {
+            "{0}  {1}" -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant(), (Split-Path $f -Leaf)
+          }
+          [IO.File]::WriteAllText("$PWD/target/SHA256SUMS.txt", ($sums -join "`n") + "`n")
+          gh release create "${{ github.ref_name }}" $setup.FullName $zip target/SHA256SUMS.txt --title "Remora RDP ${{ github.ref_name }}" --notes-file release-notes.md

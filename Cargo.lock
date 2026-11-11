@@ -5854,7 +5854,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "remora"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -5875,7 +5875,6 @@ dependencies = [
  "rfd",
  "rusqlite",
  "rustls",
- "rustls-native-certs",
  "semver",
  "serde",
  "serde_json",

@@ -52,8 +52,6 @@ impl From<String> for Secret {
 pub enum CredentialKind {
     Password,
     GatewayPassword,
-    /// Passwort für den Proxora-Import (nicht an eine Verbindung gebunden).
-    ProxoraPassword,
 }
 
 /// Schlüssel eines gespeicherten Geheimnisses.
@@ -78,23 +76,13 @@ impl CredentialKey {
         }
     }
 
-    /// Zugang zur Proxora-Instanz (Einstellungen → Proxora).
-    pub fn proxora() -> Self {
-        Self {
-            connection: 0,
-            kind: CredentialKind::ProxoraPassword,
-        }
-    }
-
     /// Ziel-Name im Credential Manager, z. B. `Remora RDP/connection/12/password`.
     pub fn target_name(&self) -> String {
-        match self.kind {
-            CredentialKind::Password => format!("{TARGET_PREFIX}/connection/{}/password", self.connection),
-            CredentialKind::GatewayPassword => {
-                format!("{TARGET_PREFIX}/connection/{}/gateway-password", self.connection)
-            }
-            CredentialKind::ProxoraPassword => format!("{TARGET_PREFIX}/proxora/password"),
-        }
+        let kind = match self.kind {
+            CredentialKind::Password => "password",
+            CredentialKind::GatewayPassword => "gateway-password",
+        };
+        format!("{TARGET_PREFIX}/connection/{}/{kind}", self.connection)
     }
 }
 

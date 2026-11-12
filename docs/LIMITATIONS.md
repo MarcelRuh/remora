@@ -10,7 +10,7 @@ Stand: Version 0.1.0. Die Tabelle unterscheidet zwischen **vollständig**, **tei
 | Zertifikatsprüfung | vollständig | Strikte Plattformprüfung, bei Fehlschlag TOFU-Dialog mit SHA-256-Fingerabdruck; geänderte Zertifikate werden deutlich gewarnt. Keine globale Abschaltung. |
 | Grafik (Bitmap-Codecs, RemoteFX, EGFX/H.264) | vollständig | H.264 über Windows Media Foundation (durch IronRDP). |
 | Maus, Rad, X1/X2 | vollständig | Horizontales Scrollen abhängig vom Eingabegerät. |
-| Tastatur (Scancodes) | vollständig (Windows) | Über Low-Level-Hook. **Pause/Untbr** wird nicht gesendet (benötigt eine Sonderfolge, die `ironrdp-input` nicht abbildet). |
+| Tastatur (Scancodes) | vollständig (Windows) | Über die Tastennachrichten des Fensters; zusätzlich ein Low-Level-Hook für Systemkombinationen (Win, Alt+Tab). Wird der Hook von Windows nicht aufgerufen, bleiben diese lokal. **Pause/Untbr** wird nicht gesendet (benötigt eine Sonderfolge, die `ironrdp-input` nicht abbildet). |
 | Strg+Alt+Entf | teilweise | Lokal nicht abfangbar (Windows SAS). Ersatz: Strg+Alt+Ende oder Tab-Kontextmenü. |
 | IME/Unicode-Eingabe | nicht | Komposition asiatischer Eingabemethoden wird nicht übertragen (nur Scancodes). |
 | Zwischenablage | teilweise | Text und Bilder in beide Richtungen. **Dateien** kopieren ist deaktiviert, da die Stream-Behandlung durch die einbettende Anwendung erfolgen muss. |

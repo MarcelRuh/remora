@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.2.3] – 2026-11-12
+
+### Behoben
+
+- Tastatureingaben kamen in RDP-Sitzungen nicht an, wenn Windows den Low-Level-Tastatur-Hook nicht aufruft (beobachtet: Hook installiert, aber nie aufgerufen). Tasten werden jetzt zusätzlich direkt aus den Tastennachrichten des Remora-Fensters mit Scancode an die Sitzung geleitet; der Hook dient weiterhin für Systemkombinationen wie Win oder Alt+Tab.
+
 ## [0.2.2] – 2026-11-12
 
 ### Behoben

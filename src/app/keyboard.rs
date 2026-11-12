@@ -158,7 +158,31 @@ pub fn install(hwnd: isize, on_local: impl Fn(LocalAction) + 'static) {
         });
     });
     #[cfg(windows)]
-    platform::install_hook();
+    {
+        platform::install_hook();
+        platform::install_window_fallback(hwnd);
+    }
+}
+
+/// Zerlegt eine Tastennachricht des Fensters (`WM_KEYDOWN` usw.) in
+/// `(virtueller Code, Scancode, erweitert, gedrückt)`; `None` für andere Nachrichten.
+pub fn key_from_message(msg: u32, wparam: usize, lparam: isize) -> Option<(u32, u32, bool, bool)> {
+    const WM_KEYDOWN: u32 = 0x0100;
+    const WM_KEYUP: u32 = 0x0101;
+    const WM_SYSKEYDOWN: u32 = 0x0104;
+    const WM_SYSKEYUP: u32 = 0x0105;
+    let pressed = match msg {
+        WM_KEYDOWN | WM_SYSKEYDOWN => true,
+        WM_KEYUP | WM_SYSKEYUP => false,
+        _ => return None,
+    };
+    let bits = lparam as usize;
+    Some((
+        wparam as u32,
+        ((bits >> 16) & 0xFF) as u32,
+        bits & (1 << 24) != 0,
+        pressed,
+    ))
 }
 
 /// Setzt das Ziel der Tastatureingaben (`None` = lokal). Beim Wechsel werden auf der alten
@@ -265,6 +289,48 @@ mod platform {
             Ok(h) => HOOK.with(|c| c.set(h.0 as isize)),
             Err(e) => tracing::error!(error = %e, "Tastatur-Hook konnte nicht installiert werden"),
         }
+    }
+
+    const SUBCLASS_ID: usize = 0x5245_4b42; // "REKB"
+
+    /// Zweiter Weg neben dem Hook: Tastennachrichten des Remora-Fensters selbst.
+    ///
+    /// Der Low-Level-Hook wird von Windows nicht in jeder Umgebung aufgerufen (beobachtet:
+    /// Hook installiert, aber nie aufgerufen, während die Tasten normal im Fenster ankommen).
+    /// Hat der Hook eine Taste bereits weitergeleitet, hat er sie verschluckt – sie erreicht das
+    /// Fenster dann nicht, wird also nie doppelt gesendet. Systemkombinationen wie Win oder
+    /// Alt+Tab kann nur der Hook abfangen.
+    pub fn install_window_fallback(hwnd: isize) {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::SetWindowSubclass;
+        // SAFETY: gültiges Fensterhandle des UI-Threads; die Prozedur bleibt für die Laufzeit gültig.
+        let ok = unsafe { SetWindowSubclass(HWND(hwnd as *mut _), Some(subclass_proc), SUBCLASS_ID, 0) };
+        if !ok.as_bool() {
+            tracing::error!("Tastatur-Weiterleitung über Fensternachrichten konnte nicht eingerichtet werden");
+        }
+    }
+
+    unsafe extern "system" fn subclass_proc(
+        h: windows::Win32::Foundation::HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        _data: usize,
+    ) -> LRESULT {
+        use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
+        const WM_NCDESTROY: u32 = 0x0082;
+        if let Some((vk, scan, extended, pressed)) = key_from_message(msg, wparam.0, lparam.0)
+            && handle(vk, scan, extended, pressed)
+        {
+            return LRESULT(0);
+        }
+        if msg == WM_NCDESTROY {
+            // SAFETY: Entfernen der eigenen Unterklasse beim Zerstören des Fensters
+            let _ = unsafe { RemoveWindowSubclass(h, Some(subclass_proc), SUBCLASS_ID) };
+        }
+        // SAFETY: Standardweiterleitung an die nächste Unterklasse bzw. Fensterprozedur
+        unsafe { DefSubclassProc(h, msg, wparam, lparam) }
     }
 
     pub fn foreground_window() -> isize {
@@ -380,6 +446,27 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_key_messages_carry_scancode() {
+        // WM_KEYDOWN 'A': Scancode 0x1E in Bits 16–23
+        assert_eq!(
+            key_from_message(0x0100, 0x41, 0x001E_0001),
+            Some((0x41, 0x1E, false, true))
+        );
+        // WM_KEYUP rechte Strg-Taste: Scancode 0x1D, erweitert (Bit 24)
+        assert_eq!(
+            key_from_message(0x0101, 0x11, 0xC11D_0001_u32 as i32 as isize),
+            Some((0x11, 0x1D, true, false))
+        );
+        // WM_SYSKEYDOWN Alt
+        assert_eq!(
+            key_from_message(0x0104, 0x12, 0x2038_0001),
+            Some((0x12, 0x38, false, true))
+        );
+        // WM_CHAR ist keine Tastennachricht
+        assert_eq!(key_from_message(0x0102, 0x61, 0x001E_0001), None);
+    }
 
     struct NullSession;
     impl RdpSession for NullSession {

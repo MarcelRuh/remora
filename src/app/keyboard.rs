@@ -167,12 +167,7 @@ pub fn set_target(target: Option<KeyTarget>) {
     STATE.with(|s| {
         let mut guard = s.borrow_mut();
         let Some(state) = guard.as_mut() else { return };
-        let same = match (&state.target, &target) {
-            (Some(a), Some(b)) => a.session == b.session,
-            (None, None) => true,
-            _ => false,
-        };
-        if same {
+        if same_target(state.target.as_ref(), target.as_ref()) {
             return;
         }
         if let Some(old) = state.target.take() {
@@ -186,6 +181,16 @@ pub fn set_target(target: Option<KeyTarget>) {
         state.ctrl = false;
         state.alt = false;
     });
+}
+
+/// Gleiches Ziel = gleiche Sitzung **und** gleiche Verbindung. Nach einem Neuaufbau behält die
+/// Sitzung ihre ID, bekommt aber eine neue Verbindung; die alte nimmt keine Eingaben mehr an.
+fn same_target(a: Option<&KeyTarget>, b: Option<&KeyTarget>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a.session == b.session && Rc::ptr_eq(&a.handle, &b.handle),
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 pub fn current_target() -> Option<SessionId> {
@@ -375,6 +380,30 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct NullSession;
+    impl RdpSession for NullSession {
+        fn send_input(&self, _: InputEvent) {}
+        fn resize(&self, _: u16, _: u16, _: u32) {}
+        fn set_visible(&self, _: bool) {}
+        fn disconnect(&self) {}
+    }
+
+    #[test]
+    fn reconnected_session_is_a_new_target() {
+        let first: Rc<dyn RdpSession> = Rc::new(NullSession);
+        let second: Rc<dyn RdpSession> = Rc::new(NullSession);
+        let t = |session, handle: &Rc<dyn RdpSession>| KeyTarget {
+            session,
+            handle: handle.clone(),
+        };
+        assert!(same_target(Some(&t(1, &first)), Some(&t(1, &first))));
+        // Gleiche Sitzungs-ID, neue Verbindung (Neuaufbau) → Ziel muss wechseln
+        assert!(!same_target(Some(&t(1, &first)), Some(&t(1, &second))));
+        assert!(!same_target(Some(&t(1, &first)), Some(&t(2, &first))));
+        assert!(!same_target(Some(&t(1, &first)), None));
+        assert!(same_target(None, None));
+    }
 
     #[test]
     fn local_combos_are_intercepted() {

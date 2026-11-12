@@ -132,6 +132,8 @@ pub struct AppState {
     update_busy: bool,
     hwnd: isize,
     quitting: bool,
+    /// Bereich, dessen Remote-Anzeige den Tastaturfokus hat.
+    captured_pane: Option<usize>,
 }
 
 // ============================================================================ Start
@@ -190,6 +192,7 @@ pub fn run(
         update_busy: false,
         hwnd: 0,
         quitting: false,
+        captured_pane: None,
     };
 
     {
@@ -916,6 +919,8 @@ impl AppState {
             b.set_focused_pane(focused);
         });
         self.refresh_panes();
+        // Tabwechsel, Bereichszuordnung, Schließen oder Neuverbinden ändern das Tastaturziel
+        self.sync_keyboard_target();
         self.refresh_status_bar();
         self.refresh_tree();
         self.refresh_cards();
@@ -1280,10 +1285,7 @@ impl AppState {
 
     fn close_tab(&mut self, index: usize) {
         if let Some(entry) = self.sessions.close(index) {
-            if keyboard::current_target() == Some(entry.id) {
-                keyboard::set_target(None);
-                self.with_ui(|ui| ui.global::<Bridge>().set_rdp_captured(false));
-            }
+            // Tastaturziel folgt in refresh_sessions_ui()
             self.frames.remove(&entry.id);
             self.cursors.remove(&entry.id);
             self.resize_timers.remove(&entry.id);
@@ -1332,10 +1334,10 @@ impl AppState {
         use keyboard::LocalAction;
         match action {
             LocalAction::ReleaseFocus => {
-                keyboard::set_target(None);
+                self.captured_pane = None;
+                self.sync_keyboard_target();
                 self.with_ui(|ui| {
                     let b = ui.global::<Bridge>();
-                    b.set_rdp_captured(false);
                     b.set_search_focus_request(b.get_search_focus_request() + 1);
                 });
             }
@@ -1451,19 +1453,33 @@ impl AppState {
     }
 
     fn on_capture(&mut self, pane: usize, focused: bool) {
-        let session = self.session_in_pane(pane);
         if focused {
-            if let Some(id) = session
-                && self.sessions.get(id).is_some_and(|e| e.state.is_active())
-                && let Some(handle) = self.sessions.get(id).and_then(|e| e.handle.clone())
-            {
-                keyboard::set_target(Some(keyboard::KeyTarget { session: id, handle }));
-                self.with_ui(|ui| ui.global::<Bridge>().set_rdp_captured(true));
-            }
-        } else if session.is_some() && keyboard::current_target() == session {
-            keyboard::set_target(None);
-            self.with_ui(|ui| ui.global::<Bridge>().set_rdp_captured(false));
+            self.captured_pane = Some(pane);
+        } else if self.captured_pane == Some(pane) {
+            self.captured_pane = None;
         }
+        self.sync_keyboard_target();
+    }
+
+    /// Leitet das Ziel der Tastatureingaben aus dem aktuellen Zustand ab: die Sitzung im Bereich
+    /// mit Tastaturfokus, solange sie aktiv ist – mit ihrer *aktuellen* Verbindung. Wird nach
+    /// jeder Änderung an Fokus, Bereichszuordnung oder Sitzungsstatus aufgerufen; sonst gingen
+    /// Tasten nach einem Neuverbinden oder Tabwechsel an eine alte bzw. an gar keine Verbindung.
+    fn sync_keyboard_target(&mut self) {
+        let target = self
+            .captured_pane
+            .and_then(|pane| self.session_in_pane(pane))
+            .and_then(|id| {
+                let entry = self.sessions.get(id)?;
+                if !entry.state.is_active() {
+                    return None;
+                }
+                let handle = entry.handle.clone()?;
+                Some(keyboard::KeyTarget { session: id, handle })
+            });
+        let captured = target.is_some();
+        keyboard::set_target(target);
+        self.with_ui(move |ui| ui.global::<Bridge>().set_rdp_captured(captured));
     }
 
     // ------------------------------------------------------------ Sitzungsereignisse
@@ -1650,11 +1666,9 @@ impl AppState {
                 self.schedule_resize(id, pane);
             }
         }
+        // Beendet → Tastatur freigeben; (Neu-)Aufbau → Tastatur an die aktuelle Verbindung
+        self.sync_keyboard_target();
         if terminal {
-            if keyboard::current_target() == Some(id) {
-                keyboard::set_target(None);
-                self.with_ui(|ui| ui.global::<Bridge>().set_rdp_captured(false));
-            }
             self.cursors.remove(&id);
             // Offene Zertifikatsabfragen dieser Sitzung sind hinfällig (Thread ist beendet)
         }

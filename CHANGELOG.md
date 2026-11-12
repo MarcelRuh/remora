@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.2.2] – 2026-11-12
+
+### Behoben
+
+- Tastatureingaben kamen nach „Erneut verbinden“ bzw. automatischem Wiederverbinden nicht mehr in der RDP-Sitzung an; ein Klick in die Anzeige half nicht. Nach einem Tabwechsel im selben Bereich gingen Tasten noch an die vorher angezeigte Sitzung. Das Tastaturziel folgt jetzt immer der Sitzung im fokussierten Bereich und ihrer aktuellen Verbindung.
+
 ## [0.2.1] – 2026-11-11
 
 ### Hinzugefügt

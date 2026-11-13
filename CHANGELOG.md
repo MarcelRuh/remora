@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](htt
 
 ## [Unreleased]
 
+## [0.2.4] – 2026-11-13
+
+### Behoben
+
+- Dynamische Auflösung: Kurz nach dem Verbinden fragte Remora die schon vorhandene Desktopgröße erneut an, solange noch kein Bild empfangen war. Der Server ignoriert eine unveränderte Größe, und nach drei Sekunden verband IronRDP neu („verbindet hin und wieder einfach so neu“).
+- Nach einer Größenänderung, die IronRDP per Neuverbindung durchführt (Server reaktiviert nicht schnell genug), forderte Remora dieselbe Größe noch einmal an. Das löste eine zweite Neuverbindung aus, z. B. beim Verschieben des Fensters auf einen anderen Bildschirm. Remora verfolgt jetzt die angeforderten Größen bis zur Antwort des Servers. Eine Größe, die der Server wiederholt ablehnt, wird nicht endlos weiter angefordert.
+- Verbindungsaufbau, Größenanfragen und vom Server gemeldete Desktopgrößen stehen jetzt im Protokoll (Stufe info).
+
 ## [0.2.3] – 2026-11-12
 
 ### Behoben

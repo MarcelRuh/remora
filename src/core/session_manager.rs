@@ -5,7 +5,7 @@
 
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::database::{Connection, ConnectionId, ScaleMode};
 use crate::rdp::input::WheelAccumulator;
@@ -32,11 +32,104 @@ pub struct SessionEntry {
     pub logged_on: bool,
     /// Kennung des aktuellen Verbindungsversuchs (Ereignisse älterer Versuche werden verworfen).
     pub attempt: u64,
+    /// Abgleich zwischen angeforderter und vom Server gemeldeter Desktopgröße.
+    pub size: SizeTracker,
 }
 
 impl SessionEntry {
     pub fn is_connected(&self) -> bool {
         self.state == SessionState::Connected
+    }
+}
+
+/// Abweichung in Pixeln, unterhalb derer keine neue Größe angefordert wird.
+const RESIZE_TOLERANCE: u16 = 8;
+/// Spätestens dann gilt eine unbeantwortete Größenanfrage als erledigt.
+pub const SIZE_REQUEST_EXPIRY: Duration = Duration::from_secs(10);
+/// Wie oft dieselbe Größe angefordert wird, wenn der Server danach eine andere meldet.
+const SIZE_REQUEST_ATTEMPTS: u8 = 2;
+
+fn near(a: (u16, u16), b: (u16, u16)) -> bool {
+    a.0.abs_diff(b.0) <= RESIZE_TOLERANCE && a.1.abs_diff(b.1) <= RESIZE_TOLERANCE
+}
+
+/// Entscheidet, wann eine Desktopgröße (dynamische Auflösung) angefordert wird.
+///
+/// Nach einer Anfrage – auch beim Verbindungsaufbau oder bei einer Neuverbindung, die IronRDP
+/// statt einer Größenänderung durchführt – kommt das erste Bild in der neuen Größe oft erst
+/// Sekunden später. Bis dahin ist die zuletzt empfangene Größe veraltet; eine erneute Anfrage
+/// derselben Größe ignoriert der Server, und IronRDP verbindet nach Ablauf seiner Wartezeit
+/// ein weiteres Mal neu. Maßgeblich ist daher bis zur Antwort die angeforderte Größe, danach die
+/// gemeldete. Mehrere Anfragen kurz hintereinander arbeitet IronRDP nacheinander ab; eine Antwort
+/// in der Größe einer früheren Anfrage ist ein Zwischenstand, keine Ablehnung. Lehnt der Server
+/// eine Größe wiederholt ab, wird sie nicht weiter angefordert.
+#[derive(Debug, Default)]
+pub struct SizeTracker {
+    /// Offene Anfragen in Reihenfolge, die letzte ist das aktuelle Ziel.
+    outstanding: Vec<(u16, u16)>,
+    last_request: Option<Instant>,
+    failed: Option<((u16, u16), u8)>,
+}
+
+impl SizeTracker {
+    /// Neuer Verbindungsaufbau mit `size`: frühere Anfragen sind hinfällig.
+    pub fn connecting(&mut self, size: (u16, u16), now: Instant) {
+        self.outstanding.clear();
+        self.failed = None;
+        self.requested(size, now);
+    }
+
+    /// Größe wurde per dynamischer Auflösung angefordert.
+    pub fn requested(&mut self, size: (u16, u16), now: Instant) {
+        // Begrenzen: IronRDP fasst ohnehin alle bis auf die laufende und die letzte zusammen.
+        if self.outstanding.len() >= 4 {
+            self.outstanding.remove(0);
+        }
+        self.outstanding.push(size);
+        self.last_request = Some(now);
+    }
+
+    /// Ob noch eine Antwort des Servers aussteht.
+    pub fn awaiting(&self, now: Instant) -> bool {
+        !self.outstanding.is_empty()
+            && self
+                .last_request
+                .is_some_and(|at| now.duration_since(at) < SIZE_REQUEST_EXPIRY)
+    }
+
+    /// Server meldet seine tatsächliche Größe (erstes Bild nach Aufbau oder Größenänderung).
+    pub fn confirmed(&mut self, remote: (u16, u16)) {
+        let Some(&latest) = self.outstanding.last() else { return };
+        match self.outstanding.iter().position(|&s| near(s, remote)) {
+            Some(i) if i + 1 == self.outstanding.len() => {
+                self.outstanding.clear();
+                self.failed = None;
+            }
+            // Zwischenstand: spätere Anfragen laufen noch
+            Some(i) => {
+                self.outstanding.drain(..=i);
+            }
+            None => {
+                self.outstanding.clear();
+                self.failed = match self.failed {
+                    Some((size, n)) if near(size, latest) => Some((size, n.saturating_add(1))),
+                    _ => Some((latest, 1)),
+                };
+            }
+        }
+    }
+
+    /// Ob für die Bereichsgröße `target` eine neue Größe angefordert werden soll.
+    pub fn wants(&self, target: (u16, u16), remote: (u16, u16), now: Instant) -> bool {
+        if self.awaiting(now)
+            && let Some(&latest) = self.outstanding.last()
+        {
+            return !near(latest, target);
+        }
+        if near(remote, target) {
+            return false;
+        }
+        !matches!(self.failed, Some((size, n)) if near(size, target) && n >= SIZE_REQUEST_ATTEMPTS)
     }
 }
 
@@ -194,6 +287,7 @@ impl SessionManager {
             gateway_password,
             logged_on: false,
             attempt: 0,
+            size: SizeTracker::default(),
         };
         self.start(
             &mut entry,
@@ -220,6 +314,9 @@ impl SessionManager {
             crate::database::Resolution::Fixed { width, height } => (width, height),
             crate::database::Resolution::FitToWindow => desktop,
         };
+        let (w, h) = (w.max(200), h.max(200));
+        entry.size.connecting((w, h), Instant::now());
+        tracing::info!(session = entry.id, w, h, scale_factor, "Verbindungsaufbau");
         self.next_attempt += 1;
         entry.attempt = self.next_attempt;
         let request = ConnectRequest {
@@ -227,8 +324,8 @@ impl SessionManager {
             connection: entry.connection.clone(),
             password: entry.password.clone(),
             gateway_password: entry.gateway_password.clone(),
-            desktop_width: w.max(200),
-            desktop_height: h.max(200),
+            desktop_width: w,
+            desktop_height: h,
             scale_factor,
             connect_timeout,
             auto_reconnect_attempts,
@@ -553,5 +650,107 @@ mod tests {
         let closed = m.close(0).unwrap();
         assert!(closed.password.is_none());
         assert!(m.pane_of(id).is_none());
+    }
+
+    #[test]
+    fn no_second_request_while_reconnected_session_still_shows_old_size() {
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        s.requested((1104, 788), t0);
+        // Altes Bild (1024×768) noch sichtbar, Bereich unverändert: keine erneute Anfrage
+        assert!(!s.wants((1104, 788), (1024, 768), t0 + Duration::from_millis(450)));
+        // Neuer Bereich während der Anfrage: weiterleiten (IronRDP stellt sie zurück)
+        assert!(s.wants((904, 688), (1024, 768), t0 + Duration::from_millis(450)));
+    }
+
+    #[test]
+    fn confirmed_size_is_the_truth() {
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        s.requested((804, 648), t0);
+        // Server landet woanders (z. B. Anfrage unterwegs verloren): einmal erneut anfordern
+        s.confirmed((904, 688));
+        assert!(s.wants((804, 648), (904, 688), t0));
+        assert!(!s.wants((904, 688), (904, 688), t0));
+    }
+
+    #[test]
+    fn size_refused_twice_is_not_requested_again() {
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        for _ in 0..SIZE_REQUEST_ATTEMPTS {
+            assert!(s.wants((1104, 788), (1024, 768), t0));
+            s.requested((1104, 788), t0);
+            s.confirmed((1024, 768));
+        }
+        assert!(!s.wants((1104, 788), (1024, 768), t0));
+        // Eine andere Bereichsgröße wird wieder angefordert
+        assert!(s.wants((904, 688), (1024, 768), t0));
+    }
+
+    #[test]
+    fn success_resets_refusals() {
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        s.requested((1104, 788), t0);
+        s.confirmed((1024, 768));
+        s.requested((1104, 788), t0);
+        s.confirmed((1104, 788));
+        s.requested((1104, 788), t0);
+        s.confirmed((1024, 768));
+        assert!(s.wants((1104, 788), (1024, 768), t0));
+    }
+
+    #[test]
+    fn unanswered_request_expires() {
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        s.requested((1104, 788), t0);
+        assert!(s.wants((1104, 788), (1024, 768), t0 + SIZE_REQUEST_EXPIRY));
+    }
+
+    #[test]
+    fn start_requests_connect_size() {
+        let mut m = manager();
+        let id = m.open(
+            Connection::new("A", "a"),
+            None,
+            None,
+            (1104, 788),
+            100,
+            std::time::Duration::from_secs(5),
+            0,
+        );
+        let s = &m.get(id).unwrap().size;
+        assert!(!s.wants((1104, 788), (0, 0), Instant::now()));
+    }
+
+    #[test]
+    fn answer_to_earlier_request_is_intermediate() {
+        // Zwei Anfragen kurz hintereinander: IronRDP bedient erst die laufende, dann die letzte.
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        s.connecting((1104, 788), t0);
+        s.confirmed((1104, 788));
+        s.requested((904, 688), t0);
+        s.requested((804, 648), t0);
+        s.confirmed((904, 688));
+        assert!(!s.wants((804, 648), (904, 688), t0), "804×648 ist noch unterwegs");
+        s.confirmed((804, 648));
+        assert!(!s.awaiting(t0));
+        assert!(!s.wants((804, 648), (804, 648), t0));
+    }
+
+    #[test]
+    fn connecting_discards_old_requests_and_refusals() {
+        let t0 = Instant::now();
+        let mut s = SizeTracker::default();
+        for _ in 0..SIZE_REQUEST_ATTEMPTS {
+            s.requested((1104, 788), t0);
+            s.confirmed((1024, 768));
+        }
+        s.connecting((800, 600), t0);
+        s.confirmed((800, 600));
+        assert!(s.wants((1104, 788), (800, 600), t0));
     }
 }

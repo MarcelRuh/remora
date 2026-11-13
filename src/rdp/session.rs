@@ -400,6 +400,8 @@ async fn run_worker(
     let mut fb = Framebuffer::new(0, 0);
     let mut presenter = Presenter::new();
     let mut connected = false;
+    // Nach jedem (Neu-)Aufbau die Größe des ersten Bildes melden, auch wenn sie gleich blieb
+    let mut announce_size = false;
     let mut connect_started = Instant::now();
     let mut final_state: Option<SessionState> = None;
     let mut ticker = tokio::time::interval(PRESENT_INTERVAL);
@@ -412,7 +414,7 @@ async fn run_worker(
             }
             event = output.recv() => {
                 let Some(event) = event else { break };
-                let done = handle_event(id, event, &input, &sink, &mut fb, &mut presenter, &mut connected, &mut final_state);
+                let done = handle_event(id, event, &input, &sink, &mut fb, &mut presenter, &mut connected, &mut announce_size, &mut final_state);
                 if done {
                     break;
                 }
@@ -461,18 +463,23 @@ fn handle_event(
     fb: &mut Framebuffer,
     presenter: &mut Presenter,
     connected: &mut bool,
+    announce_size: &mut bool,
     final_state: &mut Option<SessionState>,
 ) -> bool {
     match event {
         RdpOutputEvent::Connected => {
             *connected = true;
+            *announce_size = true;
             tracing::info!(session = id, "RDP-Sitzung aktiv");
             sink.emit(id, SessionEvent::State(SessionState::Connected));
         }
         RdpOutputEvent::DesktopUpdate(update) => {
             let (buffer, width, height, region) = update.into_parts();
-            if fb.ensure_size(width.get(), height.get()) {
+            let resized = fb.ensure_size(width.get(), height.get());
+            if resized {
                 presenter.invalidate(width.get(), height.get());
+            }
+            if std::mem::take(announce_size) | resized {
                 sink.emit(
                     id,
                     SessionEvent::Resolution {
@@ -489,7 +496,7 @@ fn handle_event(
             let size_changed = fb.width() != width.get() || fb.height() != height.get();
             if fb.replace(buffer, width.get(), height.get()) {
                 presenter.invalidate(width.get(), height.get());
-                if size_changed {
+                if std::mem::take(announce_size) | size_changed {
                     sink.emit(
                         id,
                         SessionEvent::Resolution {

@@ -20,7 +20,7 @@ use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMo
 
 use crate::core::connection_manager::{self, ConnectionManager, PasswordChange, SortMode};
 use crate::core::event_bus::{AppEvent, BusSink, EventBus};
-use crate::core::session_manager::{LayoutMode, SessionManager};
+use crate::core::session_manager::{LayoutMode, SIZE_REQUEST_EXPIRY, SessionManager};
 use crate::database::{
     Connection, ConnectionId, Database, Folder, FolderId, Resolution, ScaleMode, parse_quick_connect,
 };
@@ -117,6 +117,8 @@ pub struct AppState {
     cursors: HashMap<SessionId, CursorState>,
     pane_geometry: Vec<(f32, f32)>,
     resize_timers: HashMap<SessionId, Timer>,
+    /// Nachprüfung, falls eine Größenanfrage unbeantwortet bleibt.
+    size_rechecks: HashMap<SessionId, Timer>,
     reconnect_timers: HashMap<SessionId, Timer>,
 
     pending_connect: Option<PendingConnect>,
@@ -180,6 +182,7 @@ pub fn run(
         cursors: HashMap::new(),
         pane_geometry: vec![(0.0, 0.0); 4],
         resize_timers: HashMap::new(),
+        size_rechecks: HashMap::new(),
         reconnect_timers: HashMap::new(),
         pending_connect: None,
         pending_certs: VecDeque::new(),
@@ -1289,6 +1292,7 @@ impl AppState {
             self.frames.remove(&entry.id);
             self.cursors.remove(&entry.id);
             self.resize_timers.remove(&entry.id);
+            self.size_rechecks.remove(&entry.id);
             self.reconnect_timers.remove(&entry.id);
         }
         if self.sessions.is_empty() && self.fullscreen() {
@@ -1369,6 +1373,29 @@ impl AppState {
         self.schedule_resize(id, pane);
     }
 
+    /// Steht nach einer Antwort noch eine spätere Größenanfrage aus, nach Ablauf ihrer Frist erneut
+    /// prüfen (IronRDP kann eine Anfrage bei einer Neuverbindung verwerfen).
+    fn schedule_size_recheck(&mut self, id: SessionId) {
+        if !self.sessions.get(id).is_some_and(|e| e.size.awaiting(Instant::now())) {
+            self.size_rechecks.remove(&id);
+            return;
+        }
+        let timer = Timer::default();
+        timer.start(
+            TimerMode::SingleShot,
+            SIZE_REQUEST_EXPIRY + Duration::from_millis(200),
+            move || {
+                with_app(move |s| {
+                    s.size_rechecks.remove(&id);
+                    if let Some(pane) = s.sessions.pane_of(id) {
+                        s.schedule_resize(id, pane);
+                    }
+                });
+            },
+        );
+        self.size_rechecks.insert(id, timer);
+    }
+
     /// Dynamische Auflösung: nach kurzer Ruhephase neue Größe an den Server melden.
     fn schedule_resize(&mut self, id: SessionId, pane: usize) {
         let Some(entry) = self.sessions.get(id) else { return };
@@ -1384,12 +1411,14 @@ impl AppState {
                 }
                 let (w, h) = s.desktop_size_for(pane);
                 let scale = s.scale_percent();
-                if let Some(e) = s.sessions.get(id)
+                let now = Instant::now();
+                if let Some(e) = s.sessions.get_mut(id)
                     && let Some(handle) = &e.handle
-                    && (e.remote_size.0.abs_diff(w) > 8 || e.remote_size.1.abs_diff(h) > 8)
+                    && e.size.wants((w, h), e.remote_size, now)
                 {
-                    tracing::debug!(session = id, w, h, "Dynamische Auflösung angefordert");
+                    tracing::info!(session = id, w, h, scale, "Dynamische Auflösung angefordert");
                     handle.resize(w, h, scale);
+                    e.size.requested((w, h), now);
                 }
             });
         });
@@ -1562,8 +1591,15 @@ impl AppState {
             }
             SessionEvent::Resolution { width, height } => {
                 if let Some(e) = self.sessions.get_mut(id) {
+                    tracing::info!(session = id, width, height, "Desktopgröße vom Server");
                     e.remote_size = (width, height);
+                    e.size.confirmed((width, height));
                 }
+                // Bereich kann sich geändert haben, während die Antwort ausstand
+                if let Some(pane) = self.sessions.pane_of(id) {
+                    self.schedule_resize(id, pane);
+                }
+                self.schedule_size_recheck(id);
                 self.refresh_pane_of(id);
                 self.refresh_status_bar();
                 false

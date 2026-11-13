@@ -10,8 +10,8 @@ fn main() {
         let version = env!("CARGO_PKG_VERSION");
         let mut res = winresource::WindowsResource::new();
         res.set_icon("assets/remora.ico")
-            .set("ProductName", "Remora RDP")
-            .set("FileDescription", "Remora RDP Manager")
+            .set("ProductName", "Remora")
+            .set("FileDescription", "Remora – Remote Connection Manager")
             .set("InternalName", "remora")
             .set("OriginalFilename", "remora.exe")
             .set("ProductVersion", version)

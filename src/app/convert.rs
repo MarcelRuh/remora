@@ -3,7 +3,7 @@
 use chrono::{DateTime, Local, Utc};
 use slint::{Color, SharedString};
 
-use crate::database::{Connection, ConnectionOptions, Folder, FolderId, Resolution, ScaleMode};
+use crate::database::{Connection, ConnectionOptions, Folder, FolderId, Protocol, Resolution, ScaleMode, SshAuth};
 use crate::settings::{AppSettings, OpenBehavior, ThemeMode, WindowsKeyMode, parse_hex_color};
 use crate::ui::{ConnCard, EditorData, SettingsData};
 
@@ -114,7 +114,7 @@ pub fn format_duration(secs: u64) -> String {
 
 pub fn subtitle(c: &Connection) -> String {
     let user = c.display_user();
-    let host = if c.port == crate::database::DEFAULT_RDP_PORT {
+    let host = if c.port == c.protocol.default_port() {
         c.host.clone()
     } else {
         format!("{}:{}", c.host, c.port)
@@ -168,6 +168,13 @@ pub fn editor_from_connection(
     let (res_index, cw, ch) = resolution_to_index(o.resolution);
     EditorData {
         id: c.id as i32,
+        protocol: i32::from(c.is_ssh()),
+        ssh_auth: match o.ssh.auth {
+            SshAuth::Password => 0,
+            SshAuth::KeyFile => 1,
+            SshAuth::Agent => 2,
+        },
+        key_path: o.ssh.key_path.as_str().into(),
         name: c.name.as_str().into(),
         host: c.host.as_str().into(),
         port: c.port.to_string().into(),
@@ -216,6 +223,7 @@ pub fn apply_editor(
     folders: &[(String, Option<FolderId>)],
 ) -> Result<Connection, String> {
     let mut c = base.clone();
+    c.set_protocol(if d.protocol == 1 { Protocol::Ssh } else { Protocol::Rdp });
     c.name = d.name.trim().to_owned();
     c.host = d.host.trim().to_owned();
     c.port = d
@@ -268,6 +276,17 @@ pub fn apply_editor(
     o.gateway.username = d.gateway_username.trim().to_owned();
     o.gateway.bypass_for_direct = d.gateway_bypass;
     o.custom_rdp_properties = d.custom_properties.to_string();
+    o.ssh.auth = match d.ssh_auth {
+        1 => SshAuth::KeyFile,
+        2 => SshAuth::Agent,
+        _ => SshAuth::Password,
+    };
+    o.ssh.key_path = d.key_path.trim().trim_matches('"').to_owned();
+    if c.is_ssh() {
+        // Terminals folgen immer der Bereichsgröße; eine Domäne gibt es nicht.
+        c.options.resolution = Resolution::FitToWindow;
+        c.domain.clear();
+    }
     c.validate()?;
     Ok(c)
 }
@@ -289,6 +308,7 @@ pub fn settings_to_data(s: &AppSettings) -> SettingsData {
         autostart: s.autostart,
         check_updates: s.check_updates,
         windows_keys: s.windows_keys.index(),
+        terminal_font_size: s.terminal_font_size as i32,
     }
 }
 
@@ -311,6 +331,7 @@ pub fn apply_settings_data(d: &SettingsData, s: &mut AppSettings) {
     s.autostart = d.autostart;
     s.check_updates = d.check_updates;
     s.windows_keys = WindowsKeyMode::from_index(d.windows_keys);
+    s.terminal_font_size = d.terminal_font_size.clamp(8, 32) as u32;
 }
 
 #[cfg(test)]

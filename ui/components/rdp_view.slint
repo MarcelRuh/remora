@@ -139,9 +139,12 @@ export component RdpPane inherits Rectangle {
                         e.button == PointerEventButton.left ? 0 : e.button == PointerEventButton.right ? 1 : e.button == PointerEventButton.middle ? 2 : e.button == PointerEventButton.back ? 3 : e.button == PointerEventButton.forward ? 4 : -1,
                         self.mouse-x, self.mouse-y, self.width, self.height);
                 }
-            }
-            moved => {
-                Bridge.pane-pointer(pane-index, 2, -1, self.mouse-x, self.mouse-y, self.width, self.height);
+                // Jede Bewegung, auch ohne gedrückte Taste (`moved` käme nur beim Ziehen).
+                // Ohne Hover-Bewegungen blendet Windows den beim Tippen versteckten Zeiger
+                // nicht wieder ein, und Hover-Effekte in der Sitzung fehlen.
+                if e.kind == PointerEventKind.move {
+                    Bridge.pane-pointer(pane-index, 2, -1, self.mouse-x, self.mouse-y, self.width, self.height);
+                }
             }
             scroll-event(e) => {
                 Bridge.pane-scroll(pane-index, e.delta-x, e.delta-y);

@@ -96,3 +96,100 @@ pub fn open_url(url: &str) {
         tracing::warn!(error = %e, "Adresse konnte nicht geöffnet werden");
     }
 }
+
+/// Text aus der Zwischenablage (`CF_UNICODETEXT`).
+pub fn clipboard_text() -> Option<String> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{HANDLE, HGLOBAL};
+        use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
+        use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+        use windows::Win32::System::Ole::CF_UNICODETEXT;
+        if !open_clipboard_retrying(|| unsafe { OpenClipboard(None) }.is_ok()) {
+            return None;
+        }
+        // SAFETY: Zwischenablage ist geöffnet; der Speicher wird nur gelesen, solange er gesperrt ist.
+        unsafe {
+            let result = GetClipboardData(u32::from(CF_UNICODETEXT.0))
+                .ok()
+                .and_then(|HANDLE(h)| {
+                    let global = HGLOBAL(h);
+                    let ptr = GlobalLock(global) as *const u16;
+                    if ptr.is_null() {
+                        return None;
+                    }
+                    let max = GlobalSize(global) / 2;
+                    let slice = std::slice::from_raw_parts(ptr, max);
+                    let len = slice.iter().position(|&c| c == 0).unwrap_or(max);
+                    let s = String::from_utf16_lossy(&slice[..len]);
+                    let _ = GlobalUnlock(global);
+                    Some(s)
+                });
+            let _ = CloseClipboard();
+            result
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// Schreibt Text in die Zwischenablage; `hwnd` wird ihr Besitzer (ohne Besitzer lehnen manche
+/// Programme den Zugriff ab).
+pub fn set_clipboard_text(hwnd: isize, text: &str) -> bool {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::GlobalFree;
+        use windows::Win32::Foundation::HANDLE;
+        use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+        use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
+        use windows::Win32::System::Ole::CF_UNICODETEXT;
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        if !open_clipboard_retrying(|| {
+            unsafe { OpenClipboard(Some(windows::Win32::Foundation::HWND(hwnd as *mut _))) }.is_ok()
+        }) {
+            return false;
+        }
+        // SAFETY: Zwischenablage ist geöffnet; der Speicherblock gehört nach erfolgreichem
+        // SetClipboardData dem System, sonst wird er hier freigegeben.
+        unsafe {
+            let ok = (|| {
+                EmptyClipboard().ok()?;
+                let global = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2).ok()?;
+                let ptr = GlobalLock(global) as *mut u16;
+                if ptr.is_null() {
+                    let _ = GlobalFree(Some(global));
+                    return None;
+                }
+                std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+                let _ = GlobalUnlock(global);
+                if SetClipboardData(u32::from(CF_UNICODETEXT.0), Some(HANDLE(global.0))).is_err() {
+                    let _ = GlobalFree(Some(global));
+                    return None;
+                }
+                Some(())
+            })()
+            .is_some();
+            let _ = CloseClipboard();
+            ok
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (hwnd, text);
+        false
+    }
+}
+
+/// Andere Programme halten die Zwischenablage manchmal kurz geöffnet.
+#[cfg(windows)]
+fn open_clipboard_retrying(open: impl Fn() -> bool) -> bool {
+    for _ in 0..10 {
+        if open() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(15));
+    }
+    false
+}

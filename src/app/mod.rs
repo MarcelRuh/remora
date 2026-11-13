@@ -18,11 +18,13 @@ use std::time::{Duration, Instant};
 
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
+use crate::core::backends::ProtocolBackends;
 use crate::core::connection_manager::{self, ConnectionManager, PasswordChange, SortMode};
 use crate::core::event_bus::{AppEvent, BusSink, EventBus};
 use crate::core::session_manager::{LayoutMode, SIZE_REQUEST_EXPIRY, SessionManager};
 use crate::database::{
-    Connection, ConnectionId, Database, Folder, FolderId, Resolution, ScaleMode, parse_quick_connect,
+    Connection, ConnectionId, Database, Folder, FolderId, Resolution, ScaleMode, SshAuth, parse_quick_connect,
+    parse_ssh_quick_connect,
 };
 use crate::rdp::client::IronRdpBackend;
 use crate::rdp::{CursorUpdate, InputEvent, SessionEvent, SessionId, SessionState};
@@ -30,6 +32,7 @@ use crate::security::certificates::{CertDecision, CertificatePrompt};
 use crate::security::credentials::{CredentialStore, Secret};
 use crate::services::{config_export, rdp_file};
 use crate::settings::{AppPaths, AppSettings, OpenBehavior, ThemeMode, autostart};
+use crate::ssh::SshBackend;
 use crate::ui::{
     AppWindow, Bridge, ConnCard, Dialogs, EditorData, KnownHostItem, PaneItem, SettingsData, TabItem, Toast, TreeItem,
 };
@@ -155,8 +158,12 @@ pub fn run(
         let _ = slint::invoke_from_event_loop(|| with_app(|s| s.process_events()));
     });
 
-    let backend = Box::new(IronRdpBackend::new(db.clone()));
-    let sessions = SessionManager::new(backend, Arc::new(BusSink(bus.clone())));
+    let backend = Box::new(ProtocolBackends::new(
+        Box::new(IronRdpBackend::new(db.clone())),
+        Box::new(SshBackend::new(db.clone())),
+    ));
+    let mut sessions = SessionManager::new(backend, Arc::new(BusSink(bus.clone())));
+    sessions.terminal_font_size = settings.terminal_font_size as f32;
 
     let state = AppState {
         ui: ui.as_weak(),
@@ -210,7 +217,7 @@ pub fn run(
         b.set_version(env!("CARGO_PKG_VERSION").into());
         b.set_backend_info(
             format!(
-                "RDP-Engine: {} (ironrdp-client, rustls) · UI: Slint · Datenbank: SQLite (rusqlite, gebündelt) · Zugangsdaten: {}",
+                "Engines: {} (ironrdp-client, rustls; russh, alacritty_terminal) · UI: Slint · Datenbank: SQLite (rusqlite, gebündelt) · Zugangsdaten: {}",
                 state.sessions.backend_name(),
                 if cfg!(windows) { "Windows Credential Manager" } else { "Speicher (nur Laufzeit)" }
             )
@@ -598,7 +605,10 @@ fn wire_callbacks(ui: &AppWindow) {
     b.on_window_close(|| with_app(|s| titlebar::close(s.hwnd)));
     b.on_set_scale_mode(|id, mode| {
         with_app(move |s| {
-            if let Some(e) = s.sessions.get_mut(id as SessionId) {
+            // Terminals werden immer 1:1 gezeichnet
+            if let Some(e) = s.sessions.get_mut(id as SessionId)
+                && !e.connection.is_ssh()
+            {
                 e.scale_mode = index_to_scale(mode);
             }
             s.refresh_panes();
@@ -611,6 +621,7 @@ fn wire_callbacks(ui: &AppWindow) {
         with_app_sync(|s| result = s.save_editor(&data).into());
         result
     });
+    b.on_editor_pick_key(|| with_app(|s| s.pick_key_file()));
     b.on_credentials_submit(|user, domain, password, save| {
         let password = Secret::from(password.to_string());
         with_app(move |s| s.submit_credentials(user.to_string(), domain.to_string(), password, save));
@@ -959,6 +970,7 @@ impl AppState {
                 entry.state,
                 SessionState::Disconnected { .. } | SessionState::Error { .. }
             ),
+            terminal: entry.connection.is_ssh(),
         }
     }
 
@@ -1083,9 +1095,22 @@ impl AppState {
     }
 
     fn quick_connect(&mut self, input: &str) {
-        let Some((host, port, user, domain)) = parse_quick_connect(input) else {
+        let mut conn = if let Some((host, port, user)) = parse_ssh_quick_connect(input) {
+            let mut c = Connection::new_ssh(&host, &host);
+            c.port = port;
+            c.username = user;
+            c
+        } else if let Some((host, port, user, domain)) = parse_quick_connect(input) {
+            let mut c = Connection::new(&host, &host);
+            c.port = port;
+            c.username = user;
+            c.domain = domain;
+            c.options.scale_mode = self.settings.default_scale_mode;
+            c.options.resolution = self.settings.default_resolution;
+            c
+        } else {
             self.toast(
-                "Ungültige Adresse. Beispiel: server01, 10.0.0.5:3390 oder DOMÄNE\\benutzer@host",
+                "Ungültige Adresse. Beispiele: server01, DOMÄNE\\benutzer@host:3390, ssh root@server",
                 2,
             );
             return;
@@ -1094,27 +1119,33 @@ impl AppState {
         if let Some(existing) = self
             .connections
             .iter()
-            .find(|c| c.host.eq_ignore_ascii_case(&host) && c.port == port && (user.is_empty() || c.username == user))
+            .find(|c| {
+                c.protocol == conn.protocol
+                    && c.host.eq_ignore_ascii_case(&conn.host)
+                    && c.port == conn.port
+                    && (conn.username.is_empty() || c.username == conn.username)
+            })
             .map(|c| c.id)
         {
             self.connect(existing, None);
             return;
         }
-        let mut conn = Connection::new(&host, &host);
-        conn.port = port;
-        conn.username = user;
-        conn.domain = domain;
-        conn.icon = "zap".into();
-        conn.options.scale_mode = self.settings.default_scale_mode;
-        conn.options.resolution = self.settings.default_resolution;
+        if !conn.is_ssh() {
+            conn.icon = "zap".into();
+        }
         self.begin_connect(conn, None, None);
     }
 
     /// Fragt bei Bedarf Zugangsdaten ab und öffnet dann die Sitzung.
     fn begin_connect(&mut self, conn: Connection, pane: Option<usize>, reconnect: Option<SessionId>) {
         let stored = (conn.id != 0).then(|| self.conns.password(conn.id)).flatten();
-        let needs_prompt = conn.options.nla && (conn.username.is_empty() || stored.is_none());
-        if needs_prompt {
+        if needs_credentials(&conn, stored.is_some()) {
+            let ssh = conn.is_ssh();
+            let secret_label: SharedString = if ssh && conn.options.ssh.auth == SshAuth::KeyFile {
+                "Passphrase des Schlüssels".into()
+            } else {
+                "Passwort".into()
+            };
             let title: SharedString = if conn.id == 0 {
                 "Schnellverbindung".into()
             } else {
@@ -1137,6 +1168,8 @@ impl AppState {
                 d.set_credentials_domain(domain);
                 d.set_credentials_error(SharedString::default());
                 d.set_credentials_can_save(can_save);
+                d.set_credentials_ssh(ssh);
+                d.set_credentials_secret_label(secret_label);
                 d.set_credentials_open(true);
             });
             return;
@@ -1151,6 +1184,8 @@ impl AppState {
         self.with_ui(|ui| ui.global::<Dialogs>().set_credentials_open(false));
         let user = user.trim().to_owned();
         let (domain, user) = match (domain.trim().is_empty(), user.split_once('\\')) {
+            // SSH kennt keine Domäne
+            _ if pending.connection.is_ssh() => (String::new(), user),
             (true, Some((d, u))) => (d.to_owned(), u.to_owned()),
             _ => (domain.trim().to_owned(), user),
         };
@@ -1255,7 +1290,7 @@ impl AppState {
             .password
             .clone()
             .or_else(|| (conn.id != 0).then(|| self.conns.password(conn.id)).flatten());
-        if password.is_none() && conn.options.nla && !automatic {
+        if !automatic && needs_credentials(&conn, password.is_some()) {
             self.begin_connect(conn, None, Some(id));
             return;
         }
@@ -1352,6 +1387,33 @@ impl AppState {
                 self.request_pane_focus(self.sessions.focused_pane);
             }
             LocalAction::CtrlAltDel => {}
+            LocalAction::Copy => {
+                if let Some(handle) = self.focused_handle() {
+                    handle.copy_selection();
+                }
+            }
+            LocalAction::Paste => {
+                if let Some(id) = self.sessions.focused_session_id() {
+                    self.paste_into(id);
+                }
+            }
+        }
+    }
+
+    fn focused_handle(&self) -> Option<Rc<dyn crate::rdp::RdpSession>> {
+        let id = self.sessions.focused_session_id()?;
+        self.sessions.get(id)?.handle.clone()
+    }
+
+    /// Zwischenablage in eine Terminal-Sitzung einfügen.
+    fn paste_into(&mut self, id: SessionId) {
+        let Some(handle) = self.sessions.get(id).and_then(|e| e.handle.clone()) else {
+            return;
+        };
+        match platform::clipboard_text() {
+            Some(text) if !text.is_empty() => handle.paste(&text),
+            Some(_) => {}
+            None => self.toast("Die Zwischenablage enthält keinen Text.", 2),
         }
     }
 
@@ -1621,6 +1683,16 @@ impl AppState {
                 self.on_session_state(id, state);
                 true
             }
+            SessionEvent::Clipboard(text) => {
+                if !platform::set_clipboard_text(self.hwnd, &text) {
+                    self.toast("Text konnte nicht in die Zwischenablage kopiert werden.", 3);
+                }
+                false
+            }
+            SessionEvent::PasteRequest => {
+                self.paste_into(id);
+                false
+            }
         }
     }
 
@@ -1723,10 +1795,20 @@ impl AppState {
             let d = ui.global::<Dialogs>();
             match next {
                 Some((endpoint, fp, prev, reason)) => {
-                    d.set_cert_endpoint(endpoint.into());
-                    d.set_cert_fingerprint(fp.into());
+                    // SSH: Fingerabdruck so zeigen, wie ssh-keygen ihn ausgibt
+                    let ssh = endpoint.starts_with("ssh://");
+                    let show = |hex: String| {
+                        if ssh {
+                            crate::security::certificates::openssh_fingerprint(&hex).unwrap_or(hex)
+                        } else {
+                            hex
+                        }
+                    };
+                    d.set_cert_ssh(ssh);
+                    d.set_cert_endpoint(endpoint.trim_start_matches("ssh://").to_owned().into());
+                    d.set_cert_fingerprint(show(fp).into());
                     d.set_cert_changed(prev.is_some());
-                    d.set_cert_previous(prev.unwrap_or_default().into());
+                    d.set_cert_previous(prev.map(show).unwrap_or_default().into());
                     d.set_cert_reason(reason.into());
                     d.set_certificate_open(true);
                 }
@@ -1832,6 +1914,7 @@ impl AppState {
             d.set_editor(data);
             d.set_editor_title(title.into());
             d.set_editor_error(SharedString::default());
+            d.set_editor_picked_key(SharedString::default());
             d.set_editor_open(true);
         });
     }
@@ -1888,12 +1971,39 @@ impl AppState {
         }
     }
 
+    /// Dateidialog für die SSH-Schlüsseldatei (startet in `%USERPROFILE%\.ssh`).
+    fn pick_key_file(&mut self) {
+        let mut dialog = rfd::AsyncFileDialog::new().set_title("Private Schlüsseldatei auswählen");
+        if let Some(home) = std::env::var_os("USERPROFILE") {
+            let ssh_dir = std::path::PathBuf::from(home).join(".ssh");
+            if ssh_dir.is_dir() {
+                dialog = dialog.set_directory(ssh_dir);
+            }
+        }
+        let _ = slint::spawn_local(async move {
+            let Some(file) = dialog.pick_file().await else { return };
+            let path: SharedString = file.path().display().to_string().into();
+            with_app(move |s| {
+                s.with_ui(|ui| {
+                    let d = ui.global::<Dialogs>();
+                    // Leeren und neu setzen, damit auch dieselbe Datei erneut übernommen wird
+                    d.set_editor_picked_key(SharedString::default());
+                    d.set_editor_picked_key(path);
+                });
+            });
+        });
+    }
+
     // ------------------------------------------------------------ Import / Export
 
     fn export_rdp(&mut self, id: ConnectionId) {
         let Some(conn) = self.connection(id).cloned() else {
             return;
         };
+        if conn.is_ssh() {
+            self.toast("Nur RDP-Verbindungen lassen sich als .rdp-Datei exportieren.", 2);
+            return;
+        }
         let file_name = format!("{}.rdp", sanitize_file_name(&conn.name));
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Als RDP-Datei exportieren")
@@ -2145,6 +2255,7 @@ impl AppState {
             self.with_ui(|ui| ui.global::<Dialogs>().set_settings(d));
         }
         self.apply_theme();
+        self.sessions.terminal_font_size = self.settings.terminal_font_size as f32;
         keyboard::set_policy(self.settings.windows_keys, self.fullscreen());
         self.save_settings();
     }
@@ -2173,6 +2284,21 @@ impl AppState {
 }
 
 /// Bei "An Fenster anpassen" entspricht die Remote-Auflösung der Fläche → 1:1-Darstellung.
+/// Ob vor dem Verbinden Zugangsdaten abgefragt werden müssen (`stored` = Passwort bzw.
+/// Passphrase liegt vor).
+fn needs_credentials(conn: &Connection, stored: bool) -> bool {
+    if conn.is_ssh() {
+        // Agent und ungeschützter Schlüssel brauchen keine Abfrage; ein fehlender Benutzername
+        // wird beim Verbinden gemeldet.
+        return match conn.options.ssh.auth {
+            SshAuth::Password => conn.username.trim().is_empty() || !stored,
+            SshAuth::KeyFile => !stored && crate::ssh::key_needs_passphrase(&conn.options.ssh.key_path),
+            SshAuth::Agent => false,
+        };
+    }
+    conn.options.nla && (conn.username.is_empty() || !stored)
+}
+
 fn effective_scale(mode: ScaleMode, resolution: Resolution) -> ScaleMode {
     let _ = resolution;
     mode

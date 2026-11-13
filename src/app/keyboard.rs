@@ -11,10 +11,16 @@
 //! Lokale Kombinationen (Strg+Alt+Pos1/Pause/Bild↑/Bild↓/Ende) werden abgefangen und *nicht*
 //! weitergeleitet. Strg+Alt+Entf kann von keiner Anwendung abgefangen werden (Secure
 //! Attention Sequence); dafür gibt es Strg+Alt+Ende bzw. den Menüeintrag.
+//!
+//! Terminal-Sitzungen (SSH) brauchen dagegen Zeichen. Für sie lässt der Hook die Tasten zum
+//! Fenster durch; Windows löst dort Tastaturlayout, AltGr und Tottasten auf (`WM_CHAR`), und
+//! nur Tasten ohne Zeichen (Pfeile, F-Tasten …) werden direkt übersetzt. Strg+Umschalt+C/V
+//! kopieren bzw. fügen ein.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::rdp::input::{KeyMods, TermKey};
 use crate::rdp::{InputEvent, RdpSession, SessionId};
 use crate::settings::WindowsKeyMode;
 
@@ -26,6 +32,40 @@ pub enum LocalAction {
     PreviousTab,
     NextTab,
     CtrlAltDel,
+    /// Terminal: Auswahl kopieren.
+    Copy,
+    /// Terminal: Zwischenablage einfügen.
+    Paste,
+}
+
+/// Tasten ohne Zeichen, die ein Terminal als Escape-Folge erwartet.
+pub fn term_key(vk_code: u32) -> Option<TermKey> {
+    Some(match vk_code {
+        0x26 => TermKey::Up,
+        0x28 => TermKey::Down,
+        0x25 => TermKey::Left,
+        0x27 => TermKey::Right,
+        0x24 => TermKey::Home,
+        0x23 => TermKey::End,
+        0x21 => TermKey::PageUp,
+        0x22 => TermKey::PageDown,
+        0x2D => TermKey::Insert,
+        0x2E => TermKey::Delete,
+        0x70..=0x7B => TermKey::F((vk_code - 0x70 + 1) as u8),
+        _ => return None,
+    })
+}
+
+/// Strg+Umschalt+C/V (ohne Alt) im Terminal.
+pub fn terminal_shortcut(vk_code: u32, mods: KeyMods) -> Option<LocalAction> {
+    if !(mods.ctrl && mods.shift) || mods.alt {
+        return None;
+    }
+    match vk_code {
+        0x43 => Some(LocalAction::Copy),
+        0x56 => Some(LocalAction::Paste),
+        _ => None,
+    }
 }
 
 /// Aktuelles Ziel der Tastatureingaben.
@@ -34,10 +74,16 @@ pub struct KeyTarget {
     pub handle: Rc<dyn RdpSession>,
 }
 
+impl KeyTarget {
+    fn text(&self) -> bool {
+        self.handle.text_input()
+    }
+}
+
 struct HookState {
     hwnd: isize,
     target: Option<KeyTarget>,
-    on_local: Box<dyn Fn(LocalAction)>,
+    on_local: Rc<dyn Fn(LocalAction)>,
     windows_keys: WindowsKeyMode,
     fullscreen: bool,
     ctrl: bool,
@@ -46,6 +92,11 @@ struct HookState {
     swallow_release_vk: Option<u32>,
     /// Das Fenster war beim letzten Ereignis im Vordergrund.
     was_foreground: bool,
+    /// Terminal: Das zur zuletzt lokal behandelten Taste gehörende `WM_CHAR` verwerfen
+    /// (z. B. ^C nach Strg+Umschalt+C).
+    suppress_char: bool,
+    /// Terminal: erste Hälfte eines UTF-16-Ersatzpaars aus `WM_CHAR`.
+    high_surrogate: Option<u16>,
 }
 
 thread_local! {
@@ -148,13 +199,15 @@ pub fn install(hwnd: isize, on_local: impl Fn(LocalAction) + 'static) {
         *s.borrow_mut() = Some(HookState {
             hwnd,
             target: None,
-            on_local: Box::new(on_local),
+            on_local: Rc::new(on_local),
             windows_keys: WindowsKeyMode::FullscreenOnly,
             fullscreen: false,
             ctrl: false,
             alt: false,
             swallow_release_vk: None,
             was_foreground: false,
+            suppress_char: false,
+            high_surrogate: None,
         });
     });
     #[cfg(windows)]
@@ -204,7 +257,27 @@ pub fn set_target(target: Option<KeyTarget>) {
         state.target = target;
         state.ctrl = false;
         state.alt = false;
+        state.suppress_char = false;
+        state.high_surrogate = None;
     });
+}
+
+/// Fügt ein UTF-16-Zeichen aus `WM_CHAR` zusammen (Ersatzpaare kommen in zwei Nachrichten).
+pub fn utf16_char(high: &mut Option<u16>, unit: u16) -> Option<char> {
+    match unit {
+        0xD800..=0xDBFF => {
+            *high = Some(unit);
+            None
+        }
+        0xDC00..=0xDFFF => {
+            let h = high.take()?;
+            char::decode_utf16([h, unit]).next()?.ok()
+        }
+        _ => {
+            *high = None;
+            char::from_u32(u32::from(unit))
+        }
+    }
 }
 
 /// Gleiches Ziel = gleiche Sitzung **und** gleiche Verbindung. Nach einem Neuaufbau behält die
@@ -320,9 +393,14 @@ mod platform {
     ) -> LRESULT {
         use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
         const WM_NCDESTROY: u32 = 0x0082;
+        const WM_CHAR: u32 = 0x0102;
+        const WM_SYSCHAR: u32 = 0x0106;
         if let Some((vk, scan, extended, pressed)) = key_from_message(msg, wparam.0, lparam.0)
-            && handle(vk, scan, extended, pressed)
+            && handle(vk, scan, extended, pressed, false)
         {
+            return LRESULT(0);
+        }
+        if (msg == WM_CHAR || msg == WM_SYSCHAR) && handle_char(wparam.0 as u16, msg == WM_SYSCHAR) {
             return LRESULT(0);
         }
         if msg == WM_NCDESTROY {
@@ -354,7 +432,13 @@ mod platform {
             // SAFETY: Für WH_KEYBOARD_LL zeigt lparam auf eine KBDLLHOOKSTRUCT.
             let kb = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
             let pressed = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
-            if handle(kb.vkCode, kb.scanCode, (kb.flags & LLKHF_EXTENDED).0 != 0, pressed) {
+            if handle(
+                kb.vkCode,
+                kb.scanCode,
+                (kb.flags & LLKHF_EXTENDED).0 != 0,
+                pressed,
+                true,
+            ) {
                 return LRESULT(1);
             }
         }
@@ -362,8 +446,84 @@ mod platform {
         unsafe { CallNextHookEx(Some(HHOOK(std::ptr::null_mut())), code, wparam, lparam) }
     }
 
+    /// Modifier laut Nachrichtenzustand des Fensters (nur im Fenster-Pfad aussagekräftig).
+    fn window_mods() -> KeyMods {
+        // SAFETY: trivialer API-Aufruf
+        let down = |vk: i32| unsafe { GetKeyState(vk) } < 0;
+        KeyMods {
+            shift: down(0x10),
+            ctrl: down(0x11),
+            alt: down(0x12),
+        }
+    }
+
+    /// Zeichen aus `WM_CHAR`/`WM_SYSCHAR` an eine Terminal-Sitzung. `true` = verschlucken.
+    fn handle_char(unit: u16, alt: bool) -> bool {
+        STATE.with(|s| {
+            let Ok(mut guard) = s.try_borrow_mut() else {
+                return false;
+            };
+            let Some(state) = guard.as_mut() else { return false };
+            let Some(target) = state.target.as_ref().filter(|t| t.text()) else {
+                return false;
+            };
+            if std::mem::take(&mut state.suppress_char) {
+                return true;
+            }
+            let Some(ch) = utf16_char(&mut state.high_surrogate, unit) else {
+                return true;
+            };
+            let event = if ch == '\t' && window_mods().shift {
+                InputEvent::TermKey {
+                    key: TermKey::BackTab,
+                    mods: KeyMods::default(),
+                }
+            } else {
+                InputEvent::Char { ch, alt }
+            };
+            target.handle.send_input(event);
+            true
+        })
+    }
+
+    /// Taste für eine Terminal-Sitzung. Der Hook lässt alles außer lokalen Kombinationen durch,
+    /// damit Windows im Fenster Zeichen erzeugt; dort werden Tasten ohne Zeichen übersetzt und
+    /// alle Tastennachrichten verschluckt (die Zeichen folgen als `WM_CHAR`).
+    fn handle_text_key(
+        state: &mut HookState,
+        decision: KeyDecision,
+        vk_code: u32,
+        pressed: bool,
+        from_hook: bool,
+    ) -> (bool, Option<LocalAction>) {
+        let Some(target) = &state.target else {
+            return (false, None);
+        };
+        if let KeyDecision::Local(action) = decision {
+            state.swallow_release_vk = Some(vk_code);
+            // Strg+Alt+Pos1/Ende/Bild/Pause erzeugen kein WM_CHAR, das verworfen werden müsste.
+            return (true, Some(action));
+        }
+        if from_hook || matches!(decision, KeyDecision::PassThrough) {
+            return (false, None);
+        }
+        if !pressed {
+            return (true, None);
+        }
+        let mods = window_mods();
+        if let Some(action) = terminal_shortcut(vk_code, mods) {
+            state.swallow_release_vk = Some(vk_code);
+            state.suppress_char = true;
+            return (true, Some(action));
+        }
+        if let Some(key) = term_key(vk_code) {
+            target.handle.send_input(InputEvent::TermKey { key, mods });
+        }
+        (true, None)
+    }
+
     /// Gibt `true` zurück, wenn das Ereignis verschluckt werden soll.
-    fn handle(vk_code: u32, scan: u32, extended: bool, pressed: bool) -> bool {
+    fn handle(vk_code: u32, scan: u32, extended: bool, pressed: bool, from_hook: bool) -> bool {
         let mut local_action = None;
         let swallow = STATE.with(|s| {
             // Kann während eines modalen Dialogs (Dateiauswahl) reentrant aufgerufen werden.
@@ -374,7 +534,9 @@ mod platform {
             if foreground_window() != state.hwnd {
                 return false;
             }
-            let Some(target) = &state.target else { return false };
+            let Some(text) = state.target.as_ref().map(KeyTarget::text) else {
+                return false;
+            };
 
             if !pressed && state.swallow_release_vk == Some(vk_code) {
                 state.swallow_release_vk = None;
@@ -398,6 +560,14 @@ mod platform {
                 vk::LMENU | vk::RMENU | vk::MENU => state.alt = pressed,
                 _ => {}
             }
+
+            if text {
+                let (swallow, action) = handle_text_key(state, decision, vk_code, pressed, from_hook);
+                // Strg+Alt+Entf gibt es im Terminal nicht
+                local_action = action.filter(|a| *a != LocalAction::CtrlAltDel);
+                return swallow;
+            }
+            let Some(target) = &state.target else { return false };
 
             match decision {
                 KeyDecision::PassThrough => false,
@@ -425,13 +595,16 @@ mod platform {
         if let Some(action) = local_action {
             // Außerhalb des Hooks ausführen (Hook muss schnell zurückkehren).
             slint::Timer::single_shot(std::time::Duration::ZERO, move || {
-                STATE.with(|s| {
-                    if let Ok(guard) = s.try_borrow()
-                        && let Some(state) = guard.as_ref()
-                    {
-                        (state.on_local)(action);
-                    }
+                // Rückruf herausnehmen und erst ohne Sperre aufrufen: Die Aktion (z. B. Tastatur
+                // freigeben) ändert über `set_target` denselben Zustand.
+                let callback = STATE.with(|s| {
+                    s.try_borrow()
+                        .ok()
+                        .and_then(|guard| guard.as_ref().map(|state| state.on_local.clone()))
                 });
+                if let Some(callback) = callback {
+                    callback(action);
+                }
             });
         }
         swallow

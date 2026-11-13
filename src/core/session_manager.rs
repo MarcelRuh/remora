@@ -183,6 +183,8 @@ pub struct SessionManager {
     pub focused_pane: usize,
     /// Aktiver Tab (Index in `sessions`), `None` = Dashboard.
     pub active: Option<usize>,
+    /// Schriftgröße neuer Terminal-Sitzungen (logische Pixel).
+    pub terminal_font_size: f32,
 }
 
 impl SessionManager {
@@ -197,6 +199,7 @@ impl SessionManager {
             panes: vec![None],
             focused_pane: 0,
             active: None,
+            terminal_font_size: 14.0,
         }
     }
 
@@ -270,7 +273,12 @@ impl SessionManager {
     ) -> SessionId {
         let id = self.next_id;
         self.next_id += 1;
-        let scale_mode = connection.options.scale_mode;
+        // Terminals werden pixelgenau in Bereichsgröße gezeichnet.
+        let scale_mode = if connection.is_ssh() {
+            ScaleMode::Original
+        } else {
+            connection.options.scale_mode
+        };
         let mut entry = SessionEntry {
             id,
             connection,
@@ -311,6 +319,8 @@ impl SessionManager {
         auto_reconnect_attempts: u32,
     ) {
         let (w, h) = match entry.connection.options.resolution {
+            // Ein Terminal füllt immer den Bereich.
+            _ if entry.connection.is_ssh() => desktop,
             crate::database::Resolution::Fixed { width, height } => (width, height),
             crate::database::Resolution::FitToWindow => desktop,
         };
@@ -329,6 +339,7 @@ impl SessionManager {
             scale_factor,
             connect_timeout,
             auto_reconnect_attempts,
+            terminal_font_size: self.terminal_font_size,
         };
         entry.state = SessionState::Connecting;
         entry.logged_on = false;

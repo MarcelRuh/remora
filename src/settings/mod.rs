@@ -91,6 +91,8 @@ pub struct AppSettings {
     /// Beim Start auf neue Versionen (GitHub-Releases) prüfen.
     pub check_updates: bool,
     pub windows_keys: WindowsKeyMode,
+    /// Schriftgröße in SSH-Terminals (logische Pixel).
+    pub terminal_font_size: u32,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
     pub window_width: f32,
@@ -118,6 +120,7 @@ impl Default for AppSettings {
             autostart: false,
             check_updates: true,
             windows_keys: WindowsKeyMode::FullscreenOnly,
+            terminal_font_size: 14,
             sidebar_width: 280.0,
             sidebar_collapsed: false,
             window_width: 1360.0,
@@ -156,6 +159,7 @@ impl AppSettings {
     pub fn sanitized(mut self) -> Self {
         self.connect_timeout_secs = self.connect_timeout_secs.clamp(5, 300);
         self.reconnect_attempts = self.reconnect_attempts.min(50);
+        self.terminal_font_size = self.terminal_font_size.clamp(8, 32);
         self.sidebar_width = self.sidebar_width.clamp(200.0, 600.0);
         self.window_width = self.window_width.clamp(800.0, 10000.0);
         self.window_height = self.window_height.clamp(560.0, 10000.0);

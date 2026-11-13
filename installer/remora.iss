@@ -1,13 +1,15 @@
-﻿; Inno-Setup-Skript für Remora RDP (Windows 10 1809+ / Windows 11, x64).
+﻿; Inno-Setup-Skript für Remora (Windows 10 1809+ / Windows 11, x64).
 ;
 ; Bauen:  powershell -ExecutionPolicy Bypass -File installer\build.ps1
 ; Ergebnis: target\installer\Remora-RDP-Setup-<Version>-x64.exe
+; (Dateiname bleibt seit 0.2: ältere Versionen suchen ihn beim eingebauten Update.)
 ;
-; Installiert nach "C:\Program Files\Remora RDP" (Administratorrechte), legt einen
-; Startmenü-Eintrag, optional ein Desktop-Symbol und die .rdp-Zuordnung ("Öffnen mit") an
-; und registriert die Deinstallation unter "Apps & Features".
+; Installiert nach "C:\Program Files\Remora" (Administratorrechte; Updates bleiben im bisherigen
+; Ordner, bis 0.2.x "C:\Program Files\Remora RDP"), legt einen Startmenü-Eintrag, optional ein
+; Desktop-Symbol und die .rdp-Zuordnung ("Öffnen mit") an und registriert die Deinstallation
+; unter "Apps & Features".
 
-#define AppName "Remora RDP"
+#define AppName "Remora"
 #define AppExe "remora.exe"
 #define ExePath "..\target\release\remora.exe"
 #ifndef AppVersion
@@ -75,8 +77,13 @@ Source: "{#ExePath}"; DestDir: "{app}"; Flags: ignoreversion
 ; Eingebettete Schrift Orbitron (SIL Open Font License 1.1) – Lizenz muss mitgeliefert werden
 Source: "..\assets\fonts\OFL.txt"; DestDir: "{app}\licenses"; DestName: "Orbitron-OFL.txt"; Flags: ignoreversion
 
+[InstallDelete]
+; Verknüpfungen aus der Zeit vor der Umbenennung (bis 0.2.x „Remora RDP“)
+Type: files; Name: "{autoprograms}\Remora RDP.lnk"
+Type: files; Name: "{autodesktop}\Remora RDP.lnk"
+
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "Remote-Desktop-Verbindungen verwalten"
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "RDP- und SSH-Verbindungen verwalten"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]

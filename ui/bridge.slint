@@ -55,6 +55,7 @@ export struct PaneItem {
     cursor-hotspot-x: int,
     cursor-hotspot-y: int,
     can-reconnect: bool,
+    terminal: bool,       // SSH-Terminal (Textcursor, keine Skalierungswahl)
 }
 
 export struct FolderOption {
@@ -64,6 +65,9 @@ export struct FolderOption {
 
 export struct EditorData {
     id: int,
+    protocol: int,          // 0 RDP, 1 SSH
+    ssh-auth: int,          // 0 Passwort, 1 Schlüsseldatei, 2 SSH-Agent
+    key-path: string,
     name: string,
     host: string,
     port: string,
@@ -113,6 +117,7 @@ export struct SettingsData {
     autostart: bool,
     check-updates: bool,
     windows-keys: int,       // 0 immer, 1 nur Vollbild, 2 nie
+    terminal-font-size: int,
 }
 
 export struct KnownHostItem {
@@ -223,6 +228,7 @@ export global Bridge {
 
     // ----------------------------------------------------------- Dialoge
     callback editor-save(EditorData) -> string;  // leerer String = OK, sonst Fehlermeldung
+    callback editor-pick-key();                // Schlüsseldatei auswählen → editor-picked-key
     callback credentials-submit(string, string, string, bool); // Benutzer, Domäne, Passwort, speichern
     callback credentials-cancel();
     callback certificate-decision(int);        // 0 abbrechen, 1 einmalig, 2 immer
@@ -251,6 +257,7 @@ export global Dialogs {
     in-out property <string> editor-title;
     in-out property <EditorData> editor;
     in-out property <string> editor-error;
+    in-out property <string> editor-picked-key;
 
     in-out property <bool> credentials-open;
     in-out property <string> credentials-title;
@@ -259,6 +266,8 @@ export global Dialogs {
     in-out property <string> credentials-domain;
     in-out property <string> credentials-error;
     in-out property <bool> credentials-can-save: true;
+    in-out property <bool> credentials-ssh;              // ohne Domäne
+    in-out property <string> credentials-secret-label: "Passwort"; // bzw. "Passphrase des Schlüssels"
 
     in-out property <bool> certificate-open;
     in-out property <string> cert-endpoint;
@@ -266,6 +275,7 @@ export global Dialogs {
     in-out property <string> cert-previous;
     in-out property <string> cert-reason;
     in-out property <bool> cert-changed;
+    in-out property <bool> cert-ssh;                    // SSH-Hostschlüssel statt TLS-Zertifikat
 
     in-out property <bool> confirm-open;
     in-out property <string> confirm-title;

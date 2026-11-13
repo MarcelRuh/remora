@@ -208,7 +208,7 @@ mod windows_store {
         fn set(&self, key: CredentialKey, username: &str, secret: &Secret) -> Result<(), CredentialError> {
             let mut target = wide(&key.target_name());
             let mut user = wide(username);
-            let mut comment = wide("Gespeichert von Remora RDP Manager");
+            let mut comment = wide("Gespeichert von Remora");
             let mut blob: Zeroizing<Vec<u8>> =
                 Zeroizing::new(secret.expose().encode_utf16().flat_map(u16::to_le_bytes).collect());
             if blob.len() > 2560 {

@@ -37,7 +37,7 @@ export component CredentialsDialog inherits Modal {
                 text <=> user;
                 horizontal-stretch: 2;
             }
-            Field {
+            if !Dialogs.credentials-ssh : Field {
                 label: "Domäne";
                 placeholder: "optional";
                 text <=> domain;
@@ -45,7 +45,7 @@ export component CredentialsDialog inherits Modal {
             }
         }
         p := Field {
-            label: "Passwort";
+            label: Dialogs.credentials-secret-label;
             password: true;
             text <=> password;
             accepted => {
@@ -54,7 +54,7 @@ export component CredentialsDialog inherits Modal {
             }
         }
         if Dialogs.credentials-can-save : CheckField {
-            text: "Passwort sicher im Windows Credential Manager speichern";
+            text: Dialogs.credentials-secret-label + " sicher im Windows Credential Manager speichern";
             checked <=> save;
         }
         if Dialogs.credentials-error != "" : Text {
@@ -84,7 +84,9 @@ export component CredentialsDialog inherits Modal {
 }
 
 export component CertificateDialog inherits Modal {
-    title: Dialogs.cert-changed ? "Zertifikat hat sich geändert!" : "Unbekanntes Serverzertifikat";
+    title: Dialogs.cert-ssh
+        ? (Dialogs.cert-changed ? "Hostschlüssel hat sich geändert!" : "Unbekannter SSH-Hostschlüssel")
+        : (Dialogs.cert-changed ? "Zertifikat hat sich geändert!" : "Unbekanntes Serverzertifikat");
     subtitle: Dialogs.cert-endpoint;
     has-icon: true;
     icon: Dialogs.cert-changed ? Icons.alert : Icons.shield;
@@ -99,9 +101,13 @@ export component CertificateDialog inherits Modal {
         padding-bottom: 18px;
         spacing: 12px;
         Text {
-            text: Dialogs.cert-changed
-                ? "Der Server präsentiert ein anderes Zertifikat als bei der letzten Verbindung. Das kann auf eine Neuinstallation hindeuten – oder auf einen Angriff (Man-in-the-Middle). Verbinde dich nur, wenn du die Änderung bestätigen kannst."
-                : "Die Identität des Servers konnte nicht über eine vertrauenswürdige Zertifizierungsstelle bestätigt werden. Bei RDP-Servern mit selbst signiertem Zertifikat ist das üblich. Vergleiche den Fingerabdruck mit dem Zertifikat des Servers.";
+            text: Dialogs.cert-ssh
+                ? (Dialogs.cert-changed
+                    ? "Der Server präsentiert einen anderen Hostschlüssel als bei der letzten Verbindung. Das kann auf eine Neuinstallation hindeuten (z. B. neu erstellter Container) – oder auf einen Angriff (Man-in-the-Middle). Verbinde dich nur, wenn du die Änderung bestätigen kannst."
+                    : "Remora kennt den Hostschlüssel dieses Servers noch nicht. Vergleiche den Fingerabdruck mit dem Schlüssel auf dem Server, bevor du ihm dauerhaft vertraust.")
+                : (Dialogs.cert-changed
+                    ? "Der Server präsentiert ein anderes Zertifikat als bei der letzten Verbindung. Das kann auf eine Neuinstallation hindeuten – oder auf einen Angriff (Man-in-the-Middle). Verbinde dich nur, wenn du die Änderung bestätigen kannst."
+                    : "Die Identität des Servers konnte nicht über eine vertrauenswürdige Zertifizierungsstelle bestätigt werden. Bei RDP-Servern mit selbst signiertem Zertifikat ist das üblich. Vergleiche den Fingerabdruck mit dem Zertifikat des Servers.");
             color: Theme.text-muted;
             font-size: Theme.font-sm;
             wrap: word-wrap;
@@ -154,7 +160,7 @@ export component CertificateDialog inherits Modal {
             clicked => { Bridge.certificate-decision(1); }
         }
         PrimaryButton {
-            text: Dialogs.cert-changed ? "Neues Zertifikat vertrauen" : "Vertrauen & merken";
+            text: Dialogs.cert-changed ? (Dialogs.cert-ssh ? "Neuen Hostschlüssel vertrauen" : "Neues Zertifikat vertrauen") : "Vertrauen & merken";
             danger: Dialogs.cert-changed;
             clicked => { Bridge.certificate-decision(2); }
         }

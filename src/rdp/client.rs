@@ -249,6 +249,7 @@ mod tests {
             scale_factor: 100,
             connect_timeout: Duration::from_secs(10),
             auto_reconnect_attempts: 3,
+            terminal_font_size: 14.0,
         }
     }
 

@@ -264,6 +264,8 @@ impl RdpSession for IronRdpSession {
                     Operation::KeyReleased(ctrl),
                 ]);
             }
+            // Terminal-Eingaben; RDP bekommt Scancodes
+            InputEvent::Char { .. } | InputEvent::TermKey { .. } => {}
         }
     }
 

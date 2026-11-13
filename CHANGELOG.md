@@ -1,8 +1,30 @@
 # Changelog
 
-Alle nennenswerten Änderungen an Remora RDP. Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
+Alle nennenswerten Änderungen an Remora (bis 0.2.x „Remora RDP“). Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen nach [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
+
+## [0.3.0] – 2026-11-13
+
+### Hinzugefügt
+
+- SSH-Verbindungen mit eingebautem Terminal als Tab bzw. Split-Bereich, neben RDP in derselben Verbindungsliste. Terminal-Emulation mit `alacritty_terminal` (xterm-256color, Truecolor, Vollbildprogramme wie htop/mc/nano mit Mausbedienung, 10 000 Zeilen Verlauf), SSH mit `russh`. Darstellung mit den Windows-Schriften Cascadia Mono bzw. Consolas.
+- Anmeldung per Passwort (auch Keyboard-Interactive, wie bei PAM üblich), Schlüsseldatei (OpenSSH/PEM; Passphrase im Windows Credential Manager) oder SSH-Agent (Windows-Dienst „OpenSSH Authentication Agent“ oder Pageant).
+- Hostschlüsselprüfung nach dem Muster der RDP-Zertifikate: Rückfrage beim ersten Verbinden mit Fingerabdruck im `ssh-keygen`-Format, deutliche Warnung bei geändertem Schlüssel; vertraute Schlüssel erscheinen unter Einstellungen → Sicherheit.
+- Tastatur im Terminal über die Zeichen von Windows (Tastaturlayout, AltGr, Tottasten); Pfeile, F-Tasten, Pos1/Ende usw. als xterm-Folgen. Kopieren per Markieren und Rechtsklick oder Strg+Umschalt+C, Einfügen per Rechtsklick oder Strg+Umschalt+V (mit Bracketed Paste). Die Sitzung kann die Zwischenablage nicht selbst lesen oder schreiben (OSC 52 wird ignoriert).
+- Schnellverbindung erkennt `ssh benutzer@host`, `ssh://benutzer@host:port` und Adressen mit Port 22.
+- Einstellung „Schriftgröße“ für das Terminal.
+
+### Geändert
+
+- Umbenannt in **Remora – Remote Connection Manager** (vorher „Remora RDP Manager“). Datenordner, Einträge im Credential Manager und die Namen der Release-Dateien bleiben, damit Updates und gespeicherte Passwörter weiter funktionieren. Neue Installationen gehen nach `C:\Program Files\Remora`, Updates bleiben im bisherigen Ordner; die alte Startmenü-Verknüpfung „Remora RDP“ wird ersetzt.
+- Datenbank-Schema Version 2: Spalte für das Protokoll (bestehende Verbindungen bleiben RDP).
+- Mindestversion von Rust zum Bauen: 1.89.
+
+### Behoben
+
+- Absturz bei Strg+Alt+Pos1 („Tastatur freigeben“) in einer Sitzung.
+- Mauszeiger verschwand beim Tippen in der Sitzung und kam erst nach einem Klick wieder. Remora schickte Mausbewegungen nur bei gedrückter Taste an den Server; Windows blendet den beim Tippen versteckten Zeiger aber erst bei einer Bewegung wieder ein. Bewegungen ohne gedrückte Taste werden jetzt übertragen, damit funktionieren auch Hover-Effekte und Tooltips in der Sitzung.
 
 ## [0.2.4] – 2026-11-13
 

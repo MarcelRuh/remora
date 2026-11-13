@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{Connection as SqlConnection, OptionalExtension, Row, params};
 
 use super::migrations;
-use super::models::{Connection, ConnectionId, ConnectionOptions, Folder, FolderId, KnownHost};
+use super::models::{Connection, ConnectionId, ConnectionOptions, Folder, FolderId, KnownHost, Protocol};
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
@@ -42,7 +42,7 @@ fn parse_ts(s: &str) -> DateTime<Utc> {
 }
 
 const CONNECTION_COLUMNS: &str = "id, name, host, port, username, domain, description, folder_id, tags, color, icon, \
-     favorite, options, sort_order, last_used, created_at, updated_at";
+     favorite, options, sort_order, last_used, created_at, updated_at, protocol";
 
 fn row_to_connection(row: &Row<'_>) -> rusqlite::Result<Connection> {
     let tags: String = row.get(8)?;
@@ -51,11 +51,13 @@ fn row_to_connection(row: &Row<'_>) -> rusqlite::Result<Connection> {
     let created_at: String = row.get(15)?;
     let updated_at: String = row.get(16)?;
     let port: i64 = row.get(3)?;
+    let protocol = Protocol::parse(&row.get::<_, String>(17)?);
     Ok(Connection {
         id: row.get(0)?,
+        protocol,
         name: row.get(1)?,
         host: row.get(2)?,
-        port: u16::try_from(port).unwrap_or(3389),
+        port: u16::try_from(port).unwrap_or(protocol.default_port()),
         username: row.get(4)?,
         domain: row.get(5)?,
         description: row.get(6)?,
@@ -235,8 +237,8 @@ impl Database {
             })?;
             c.execute(
                 "INSERT INTO connections (name, host, port, username, domain, description, folder_id, tags, color, icon,
-                    favorite, options, sort_order, last_used, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
+                    favorite, options, sort_order, last_used, created_at, updated_at, protocol)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15, ?16)",
                 params![
                     conn.name.trim(),
                     conn.host.trim(),
@@ -253,6 +255,7 @@ impl Database {
                     order,
                     conn.last_used.as_ref().map(ts),
                     ts(&now),
+                    conn.protocol.as_str(),
                 ],
             )?;
             Ok(c.last_insert_rowid())
@@ -266,7 +269,8 @@ impl Database {
         self.with(|c| {
             let n = c.execute(
                 "UPDATE connections SET name = ?1, host = ?2, port = ?3, username = ?4, domain = ?5, description = ?6,
-                    folder_id = ?7, tags = ?8, color = ?9, icon = ?10, favorite = ?11, options = ?12, updated_at = ?13
+                    folder_id = ?7, tags = ?8, color = ?9, icon = ?10, favorite = ?11, options = ?12, updated_at = ?13,
+                    protocol = ?15
                  WHERE id = ?14",
                 params![
                     conn.name.trim(),
@@ -283,6 +287,7 @@ impl Database {
                     options,
                     ts(&Utc::now()),
                     conn.id,
+                    conn.protocol.as_str(),
                 ],
             )?;
             if n == 0 { Err(DbError::NotFound) } else { Ok(()) }

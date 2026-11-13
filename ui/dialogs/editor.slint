@@ -54,15 +54,38 @@ export component ConnectionEditor inherits Modal {
 
     private property <EditorData> d: Dialogs.editor;
     private property <int> section: 0;
+    private property <bool> ssh: d.protocol == 1;
+    // Ausgewählte Schlüsseldatei (Dateidialog im Rust-Teil)
+    private property <string> picked-key: Dialogs.editor-picked-key;
+    changed picked-key => {
+        if picked-key != "" {
+            d.key-path = picked-key;
+        }
+    }
 
 
     VerticalLayout {
         padding-left: 22px;
         padding-right: 22px;
         padding-top: 8px;
-        spacing: 14px;
+        spacing: 10px;
         Segmented {
-            options: ["Allgemein", "Anzeige", "Ressourcen", "Gateway", "Erweitert"];
+            options: ["RDP – Windows-Desktop", "SSH – Terminal"];
+            selected <=> d.protocol;
+            changed(p) => {
+                section = 0;
+                // Standardport und -symbol mitwechseln, eigene Werte bleiben
+                if p == 1 {
+                    if d.port == "3389" { d.port = "22"; }
+                    if d.icon == "monitor" { d.icon = "terminal"; }
+                } else {
+                    if d.port == "22" { d.port = "3389"; }
+                    if d.icon == "terminal" { d.icon = "monitor"; }
+                }
+            }
+        }
+        Segmented {
+            options: ssh ? ["Allgemein", "Anmeldung", "Erweitert"] : ["Allgemein", "Anzeige", "Ressourcen", "Gateway", "Erweitert"];
             selected <=> section;
         }
     }
@@ -88,7 +111,7 @@ export component ConnectionEditor inherits Modal {
                     }
                     name-field := Field {
                         label: "Anzeigename";
-                        placeholder: "z. B. Domain Controller";
+                        placeholder: ssh ? "z. B. pve-ct101 (Debian)" : "z. B. Domain Controller";
                         text <=> d.name;
                         horizontal-stretch: 1;
                     }
@@ -111,18 +134,18 @@ export component ConnectionEditor inherits Modal {
                     spacing: 12px;
                     Field {
                         label: "Benutzername";
-                        placeholder: "optional";
+                        placeholder: ssh ? "z. B. root" : "optional";
                         text <=> d.username;
                         horizontal-stretch: 2;
                     }
-                    Field {
+                    if !ssh : Field {
                         label: "Domäne";
                         placeholder: "optional";
                         text <=> d.domain;
                         horizontal-stretch: 1;
                     }
                 }
-                VerticalLayout {
+                if !ssh : VerticalLayout {
                     spacing: 5px;
                     FieldLabel { text: "Passwort"; }
                     HorizontalLayout {
@@ -195,7 +218,7 @@ export component ConnectionEditor inherits Modal {
                         FieldLabel { text: "Symbol"; }
                         HorizontalLayout {
                             spacing: 4px;
-                            for n in ["monitor", "server", "laptop", "database", "globe", "cloud"] : IconChoice {
+                            for n in ["monitor", "terminal", "server", "laptop", "database", "globe", "cloud"] : IconChoice {
                                 name: n;
                                 tint: d.color;
                                 selected: d.icon == n;
@@ -211,7 +234,7 @@ export component ConnectionEditor inherits Modal {
             }
 
             // ------------------------------------------------ Anzeige
-            if section == 1 : VerticalLayout {
+            if !ssh && section == 1 : VerticalLayout {
                 spacing: 14px;
                 alignment: start;
                 VerticalLayout {
@@ -257,7 +280,7 @@ export component ConnectionEditor inherits Modal {
             }
 
             // ------------------------------------------------ Ressourcen
-            if section == 2 : VerticalLayout {
+            if !ssh && section == 2 : VerticalLayout {
                 spacing: 4px;
                 alignment: start;
                 ToggleRow {
@@ -283,7 +306,7 @@ export component ConnectionEditor inherits Modal {
             }
 
             // ------------------------------------------------ Gateway
-            if section == 3 : VerticalLayout {
+            if !ssh && section == 3 : VerticalLayout {
                 spacing: 14px;
                 alignment: start;
                 ToggleRow {
@@ -320,7 +343,7 @@ export component ConnectionEditor inherits Modal {
             }
 
             // ------------------------------------------------ Erweitert
-            if section == 4 : VerticalLayout {
+            if !ssh && section == 4 : VerticalLayout {
                 spacing: 14px;
                 alignment: start;
                 ToggleRow {
@@ -354,6 +377,96 @@ export component ConnectionEditor inherits Modal {
                         font-size: Theme.font-xs;
                         wrap: word-wrap;
                     }
+                }
+            }
+
+            // ------------------------------------------------ SSH: Anmeldung
+            if ssh && section == 1 : VerticalLayout {
+                spacing: 14px;
+                alignment: start;
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Anmeldeverfahren"; }
+                    Segmented {
+                        options: ["Passwort", "Schlüsseldatei", "SSH-Agent"];
+                        selected <=> d.ssh-auth;
+                    }
+                    Text {
+                        text: d.ssh-auth == 0 ? "Passwort-Anmeldung, auch per Keyboard-Interactive (PAM)."
+                            : d.ssh-auth == 1 ? "Privater Schlüssel im OpenSSH- oder PEM-Format, z. B. aus ssh-keygen. Eine Passphrase wird wie ein Passwort im Windows Credential Manager abgelegt."
+                            : "Schlüssel aus dem Windows-Dienst „OpenSSH Authentication Agent“ (ssh-add) oder aus Pageant.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                        wrap: word-wrap;
+                    }
+                }
+                if d.ssh-auth == 1 : VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Schlüsseldatei"; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        LineEdit {
+                            text <=> d.key-path;
+                            placeholder-text: "C:\\Users\\…\\.ssh\\id_ed25519";
+                            horizontal-stretch: 1;
+                        }
+                        GhostButton {
+                            text: "Durchsuchen …";
+                            clicked => { Bridge.editor-pick-key(); }
+                        }
+                    }
+                }
+                if d.ssh-auth != 2 : VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: d.ssh-auth == 1 ? "Passphrase des Schlüssels" : "Passwort"; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        LineEdit {
+                            input-type: password;
+                            text <=> d.password;
+                            placeholder-text: d.password-stored && d.password-action == 0 ? "•••••••• (gespeichert – leer lassen zum Beibehalten)"
+                                : d.ssh-auth == 1 ? "optional – nur bei geschütztem Schlüssel" : "optional – sonst beim Verbinden abfragen";
+                            horizontal-stretch: 1;
+                            edited(t) => { d.password-action = t == "" ? 0 : 1; }
+                        }
+                        if d.password-stored : GhostButton {
+                            text: d.password-action == 2 ? "Wird entfernt" : "Entfernen";
+                            danger: true;
+                            clicked => {
+                                d.password = "";
+                                d.password-action = d.password-action == 2 ? 0 : 2;
+                            }
+                        }
+                    }
+                    Text {
+                        text: "Wird ausschließlich im Windows Credential Manager abgelegt – nie in der Datenbank.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                    }
+                }
+            }
+
+            // ------------------------------------------------ SSH: Erweitert
+            if ssh && section == 2 : VerticalLayout {
+                spacing: 14px;
+                alignment: start;
+                VerticalLayout {
+                    spacing: 5px;
+                    FieldLabel { text: "Automatische Wiederverbindung"; }
+                    Segmented {
+                        options: ["Globale Einstellung", "Aktiviert", "Deaktiviert"];
+                        selected <=> d.auto-reconnect-index;
+                    }
+                    Text {
+                        text: "Nur nach einem Verbindungsabbruch, nicht nach „exit“. Laufende Programme der Shell enden beim Abbruch, sofern sie nicht in tmux oder screen laufen.";
+                        color: Theme.text-faint;
+                        font-size: Theme.font-xs;
+                        wrap: word-wrap;
+                    }
+                }
+                ToggleRow {
+                    title: "Im Vollbildmodus öffnen";
+                    checked <=> d.fullscreen;
                 }
             }
 

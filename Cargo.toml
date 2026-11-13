@@ -1,9 +1,9 @@
 [package]
 name = "remora"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2024"
-rust-version = "1.88"
-description = "Moderner RDP Connection Manager mit nativer Slint-Oberfläche und IronRDP"
+rust-version = "1.89"
+description = "Remote Connection Manager für RDP und SSH mit nativer Slint-Oberfläche (IronRDP, russh)"
 license = "MIT"
 repository = "https://github.com/MarcelRuh/remora"
 default-run = "remora"
@@ -78,6 +78,9 @@ anyhow = "1"
 thiserror = "2"
 rfd = { version = "0.15", default-features = false }
 smallvec = "1"
+russh = "0.65"
+alacritty_terminal = "0.26"
+fontdue = "0.9"
 
 [target.'cfg(windows)'.dependencies]
 ironrdp-cliprdr-native = { git = "https://github.com/Devolutions/IronRDP", rev = "d5e70f02b670dbe79ad7ef47203bfa82d32c16f4" }
@@ -87,6 +90,8 @@ windows = { version = "0.62", features = [
     "Win32_Security",
     "Win32_Security_Credentials",
     "Win32_System_Ole",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_LibraryLoader",

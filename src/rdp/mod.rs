@@ -84,6 +84,10 @@ pub enum SessionEvent {
     CertificatePrompt(CertificatePrompt),
     /// Der Server hat eine Anmeldung abgeschlossen.
     LoggedOn,
+    /// Text in die lokale Zwischenablage kopieren (Terminal-Auswahl).
+    Clipboard(String),
+    /// Die Sitzung möchte den Inhalt der Zwischenablage eingefügt bekommen (Rechtsklick).
+    PasteRequest,
 }
 
 #[derive(Debug)]
@@ -113,6 +117,8 @@ pub struct ConnectRequest {
     pub connect_timeout: Duration,
     /// Maximale Anzahl automatischer Wiederverbindungsversuche (0 = aus).
     pub auto_reconnect_attempts: u32,
+    /// Schriftgröße für Terminal-Sitzungen in logischen Pixeln (bei 100 % Skalierung).
+    pub terminal_font_size: f32,
 }
 
 /// Steuerung einer laufenden Sitzung. Alle Methoden sind nicht blockierend und dürfen aus dem
@@ -125,6 +131,14 @@ pub trait RdpSession {
     fn set_visible(&self, visible: bool);
     /// Ordentliches Trennen (RDP Shutdown), danach Abbruch.
     fn disconnect(&self);
+    /// Die Sitzung erwartet Zeichen statt Scancodes (Terminal).
+    fn text_input(&self) -> bool {
+        false
+    }
+    /// Text einfügen (Terminal). RDP nutzt die geteilte Zwischenablage.
+    fn paste(&self, _text: &str) {}
+    /// Markierten Text als [`SessionEvent::Clipboard`] melden (Terminal).
+    fn copy_selection(&self) {}
 }
 
 /// Austauschbare RDP-Implementierung.

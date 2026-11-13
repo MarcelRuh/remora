@@ -27,11 +27,12 @@
 | Modul | Aufgabe |
 |---|---|
 | `database` | Modelle, Migrationen (`PRAGMA user_version`), Repository. Keine Passwortspalten. |
-| `security::credentials` | `CredentialStore`-Trait; Windows: `CredReadW/CredWriteW/CredDeleteW` (Generic Credentials, `Remora RDP/connection/<id>/password`). `Secret` nullt Speicher beim Drop und erscheint nie im Debug-Output. |
+| `security::credentials` | `CredentialStore`-Trait; Windows: `CredReadW/CredWriteW/CredDeleteW` (Generic Credentials, `Remora RDP/connection/<id>/password` – auch für SSH-Passwörter und Schlüssel-Passphrasen; der Präfix stammt aus der Zeit vor der Umbenennung). `Secret` nullt Speicher beim Drop und erscheint nie im Debug-Output. |
 | `security::certificates` | SHA-256-Fingerabdruck, TOFU-Speicher (`known_hosts`), Entscheidungsdialog über die UI. |
 | `security::vault` | Argon2id + XChaCha20-Poly1305 für verschlüsselte Exporte. |
 | `services` | `.rdp`-Import/Export (UTF-16LE), JSON-Export/Import. |
 | `rdp` | `RdpBackend`/`RdpSession`-Traits (austauschbar, z. B. für ein FreeRDP-Backend), IronRDP-Implementierung, Renderer, Eingabe-Mapping. |
+| `ssh` | SSH-Backend mit derselben `RdpSession`-Schnittstelle: `russh` (Handshake, Hostschlüssel über `CertificateVerifier`, Anmeldung, PTY-Kanal), `alacritty_terminal` (Emulation, Verlauf, Auswahl), eigene Rasterung mit `fontdue` aus Windows-Schriften in einen `rdp::renderer::Framebuffer`. `core::backends::ProtocolBackends` wählt je Verbindung RDP oder SSH. |
 | `core` | Verbindungs- und Sitzungsverwaltung, Ereignisbus. |
 | `app` | Slint-Anbindung, Dialogsteuerung, Tastatur-Hook, Plattform-Helfer. |
 
@@ -50,9 +51,16 @@ Der Remote-Mauszeiger wird nicht in den Framebuffer gerendert, sondern als Overl
 * Maus: Slint-`TouchArea` → `rdp::input::map_pointer` (gleiche Geometrieformel wie in `rdp_view.slint`) → `ironrdp-input::Database` → Fast-Path.
 * Tastatur: Slint liefert nur Text, RDP braucht Scancodes. Unter Windows fängt ein Low-Level-Hook die Scancodes ab, **nur** wenn das Remora-Fenster im Vordergrund ist und eine Remote-Anzeige fokussiert ist. Lokale Kombinationen (Strg+Alt+Pos1/Pause/Bild↑/Bild↓/Ende) werden lokal behandelt. Bei Fokuswechsel werden alle Tasten der alten Sitzung losgelassen und Feststelltasten synchronisiert.
 
+## SSH-Terminal
+
+* Für die Oberfläche ist ein Terminal eine Sitzung mit dynamischer Auflösung: Der Sitzungs-Thread zeichnet das Zeichenraster in Bereichsgröße (physische Pixel, immer 1:1) und liefert Bilder über denselben `Presenter` wie RDP. Größenänderungen ergeben ein neues Raster und eine `window-change`-Anfrage an den Server.
+* Tastatur: Für Terminal-Ziele lässt der Low-Level-Hook alle Tasten außer den lokalen Kombinationen durch. Im Fenster liefert Windows über `TranslateMessage` die Zeichen (`WM_CHAR`, `WM_SYSCHAR` für Alt) – Layout, AltGr und Tottasten sind damit aufgelöst. Tasten ohne Zeichen (Pfeile, F-Tasten, Pos1 …) werden als `InputEvent::TermKey` mit Modifiern gesendet und im Sitzungs-Thread je nach Terminalmodus (z. B. Application Cursor) in xterm-Folgen übersetzt. Strg+Umschalt+C/V kopieren bzw. fügen ein; das zugehörige `WM_CHAR` (^C/^V) wird verworfen.
+* Maus: Ohne Mausmodus des Programms markiert die linke Taste (Doppel-/Dreifachklick: Wort/Zeile); Rechtsklick kopiert die Auswahl oder fügt ein. Mit Mausmodus (htop, mc) gehen Klicks, Bewegungen und Rad als SGR- bzw. X10-Berichte an den Server; Umschalt erzwingt die lokale Auswahl.
+* Zwischenablage: Die Sitzung meldet `SessionEvent::Clipboard` bzw. `PasteRequest`; der UI-Thread liest und schreibt die Windows-Zwischenablage. OSC-52-Anfragen des Servers werden ignoriert.
+
 ## Lebenszyklus & Ressourcen
 
-* Jede Sitzung = 1 OS-Thread + Tokio-Runtime mit 2 Workern. Schließen → `request_close()`; der Thread beendet sich, die Runtime wird verworfen (Sockets, Tasks, Puffer frei). Der UI-Thread joint nie.
+* Jede RDP-Sitzung = 1 OS-Thread + Tokio-Runtime mit 2 Workern, jede SSH-Sitzung = 1 OS-Thread mit einer Single-Thread-Runtime. Schließen → `request_close()`; der Thread beendet sich, die Runtime wird verworfen (Sockets, Tasks, Puffer frei). Der UI-Thread joint nie.
 * Reconnect erzeugt einen neuen *Verbindungsversuch* mit neuer Versuchs-ID. Ereignisse älterer Versuche werden verworfen.
 * Zwei Wiederverbindungsebenen: IronRDP-Auto-Reconnect mit Server-Cookie (Transportabbruch) und anwendungsseitiger Neuaufbau mit Backoff, falls dieser scheitert.
 

@@ -43,6 +43,10 @@ const MIGRATIONS: &[&str] = &[
         last_seen   TEXT NOT NULL
     );
     "#,
+    // v2: Protokoll je Verbindung (RDP oder SSH)
+    r#"
+    ALTER TABLE connections ADD COLUMN protocol TEXT NOT NULL DEFAULT 'rdp';
+    "#,
 ];
 
 pub fn current_version() -> u32 {

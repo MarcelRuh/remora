@@ -11,6 +11,73 @@ pub type FolderId = i64;
 
 /// Standard-RDP-Port.
 pub const DEFAULT_RDP_PORT: u16 = 3389;
+/// Standard-SSH-Port.
+pub const DEFAULT_SSH_PORT: u16 = 22;
+
+/// Protokoll einer Verbindung.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Protocol {
+    #[default]
+    Rdp,
+    Ssh,
+}
+
+impl Protocol {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Protocol::Rdp => "rdp",
+            Protocol::Ssh => "ssh",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("ssh") {
+            Protocol::Ssh
+        } else {
+            Protocol::Rdp
+        }
+    }
+
+    pub fn default_port(self) -> u16 {
+        match self {
+            Protocol::Rdp => DEFAULT_RDP_PORT,
+            Protocol::Ssh => DEFAULT_SSH_PORT,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Protocol::Rdp => "RDP",
+            Protocol::Ssh => "SSH",
+        }
+    }
+}
+
+/// Anmeldeverfahren für SSH.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SshAuth {
+    /// Passwort (auch per Keyboard-Interactive, wie bei PAM üblich).
+    #[default]
+    // Nicht "password": Exporte werden auf versehentlich enthaltene Passwort-Felder geprüft.
+    #[serde(rename = "password_auth")]
+    Password,
+    /// Private Schlüsseldatei (OpenSSH- oder PEM-Format); eine Passphrase liegt wie ein
+    /// Passwort im Credential Manager.
+    KeyFile,
+    /// Schlüssel aus einem laufenden SSH-Agenten (Windows OpenSSH-Agent oder Pageant).
+    Agent,
+}
+
+/// SSH-spezifische Einstellungen einer Verbindung.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SshSettings {
+    pub auth: SshAuth,
+    /// Pfad zur privaten Schlüsseldatei (bei [`SshAuth::KeyFile`]).
+    pub key_path: String,
+}
 
 /// Ordner zur hierarchischen Gruppierung von Verbindungen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,6 +175,8 @@ pub struct ConnectionOptions {
     pub admin_session: bool,
     /// Zusätzliche, frei definierbare `.rdp`-Eigenschaften (`schlüssel:typ:wert` pro Zeile).
     pub custom_rdp_properties: String,
+    /// Nur für SSH-Verbindungen.
+    pub ssh: SshSettings,
 }
 
 impl Default for ConnectionOptions {
@@ -126,14 +195,18 @@ impl Default for ConnectionOptions {
             nla: true,
             admin_session: false,
             custom_rdp_properties: String::new(),
+            ssh: SshSettings::default(),
         }
     }
 }
 
-/// Eine gespeicherte RDP-Verbindung.
+/// Eine gespeicherte Verbindung (RDP oder SSH).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Connection {
     pub id: ConnectionId,
+    /// Ältere Exporte kennen kein Protokoll → RDP.
+    #[serde(default)]
+    pub protocol: Protocol,
     pub name: String,
     pub host: String,
     pub port: u16,
@@ -160,6 +233,7 @@ impl Connection {
         let now = Utc::now();
         Self {
             id: 0,
+            protocol: Protocol::Rdp,
             name: name.into(),
             host: host.into(),
             port: DEFAULT_RDP_PORT,
@@ -176,6 +250,41 @@ impl Connection {
             last_used: None,
             created_at: now,
             updated_at: now,
+        }
+    }
+
+    /// Neue SSH-Verbindung (`id == 0`).
+    pub fn new_ssh(name: impl Into<String>, host: impl Into<String>) -> Self {
+        let mut c = Self::new(name, host);
+        c.set_protocol(Protocol::Ssh);
+        c
+    }
+
+    pub fn is_ssh(&self) -> bool {
+        self.protocol == Protocol::Ssh
+    }
+
+    /// Wechselt das Protokoll; Standardport und -symbol folgen, eigene Werte bleiben.
+    pub fn set_protocol(&mut self, protocol: Protocol) {
+        if self.protocol == protocol {
+            return;
+        }
+        if self.port == self.protocol.default_port() {
+            self.port = protocol.default_port();
+        }
+        let default_icon = |p: Protocol| if p == Protocol::Ssh { "terminal" } else { "monitor" };
+        if self.icon == default_icon(self.protocol) {
+            self.icon = default_icon(protocol).to_owned();
+        }
+        self.protocol = protocol;
+    }
+
+    /// Schlüssel für vertraute Hosts. SSH-Hostschlüssel und RDP-Zertifikate desselben Hosts
+    /// werden getrennt geführt.
+    pub fn known_host_key(&self) -> String {
+        match self.protocol {
+            Protocol::Rdp => self.endpoint(),
+            Protocol::Ssh => format!("ssh://{}", self.endpoint()),
         }
     }
 
@@ -220,6 +329,12 @@ impl Connection {
         {
             return Err("Die Auflösung muss zwischen 200 und 8192 Pixeln liegen.".to_owned());
         }
+        if self.is_ssh() {
+            if self.options.ssh.auth == SshAuth::KeyFile && self.options.ssh.key_path.trim().is_empty() {
+                return Err("Für die Anmeldung per Schlüssel fehlt die Schlüsseldatei.".to_owned());
+            }
+            return Ok(());
+        }
         if self.options.gateway.enabled && self.options.gateway.host.trim().is_empty() {
             return Err("Für das RD-Gateway fehlt der Hostname.".to_owned());
         }
@@ -241,6 +356,41 @@ pub struct KnownHost {
 /// Parst eine Quick-Connect-Eingabe wie `server`, `server:3390`, `user@server`,
 /// `DOMAIN\user@server:3390` oder `[::1]:3389`.
 pub fn parse_quick_connect(input: &str) -> Option<(String, u16, String, String)> {
+    parse_endpoint(input, DEFAULT_RDP_PORT)
+}
+
+/// Erkennt eine SSH-Schnellverbindung: `ssh user@host`, `ssh://user@host:2222` oder eine
+/// Adresse mit Port 22. Liefert `(host, port, benutzer)`.
+pub fn parse_ssh_quick_connect(input: &str) -> Option<(String, u16, String)> {
+    let trimmed = input.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let explicit = if lower.starts_with("ssh://") {
+        Some(&trimmed[6..])
+    } else if lower.starts_with("ssh ") {
+        Some(trimmed[4..].trim_start())
+    } else {
+        None
+    };
+    let (host, port, user, domain) = match explicit {
+        Some(rest) => parse_endpoint(rest.trim_end_matches('/'), DEFAULT_SSH_PORT)?,
+        None => {
+            let parsed = parse_endpoint(trimmed, DEFAULT_RDP_PORT)?;
+            if parsed.1 != DEFAULT_SSH_PORT {
+                return None;
+            }
+            parsed
+        }
+    };
+    // Eine Windows-Domäne gibt es bei SSH nicht; "a\b" wäre ein ungewöhnlicher Benutzername.
+    let user = if domain.is_empty() {
+        user
+    } else {
+        format!("{domain}\\{user}")
+    };
+    Some((host, port, user))
+}
+
+fn parse_endpoint(input: &str, default_port: u16) -> Option<(String, u16, String, String)> {
     let input = input.trim();
     if input.is_empty() {
         return None;
@@ -261,7 +411,7 @@ pub fn parse_quick_connect(input: &str) -> Option<(String, u16, String, String)>
         let after = &rest[end + 1..];
         let port = match after.strip_prefix(':') {
             Some(p) => p.parse().ok()?,
-            None if after.is_empty() => DEFAULT_RDP_PORT,
+            None if after.is_empty() => default_port,
             None => return None,
         };
         (host.to_owned(), port)
@@ -270,7 +420,7 @@ pub fn parse_quick_connect(input: &str) -> Option<(String, u16, String, String)>
         (h.to_owned(), p.parse().ok()?)
     } else {
         // Hostname, IPv4 oder unverklammerte IPv6-Adresse
-        (host_part.to_owned(), DEFAULT_RDP_PORT)
+        (host_part.to_owned(), default_port)
     };
 
     if host.is_empty() || port == 0 || host.chars().any(char::is_whitespace) {
@@ -308,6 +458,57 @@ mod tests {
         assert_eq!(parse_quick_connect(""), None);
         assert_eq!(parse_quick_connect("host:abc"), None);
         assert_eq!(parse_quick_connect("bad host"), None);
+    }
+
+    #[test]
+    fn ssh_quick_connect() {
+        assert_eq!(
+            parse_ssh_quick_connect("ssh root@pve-ct01"),
+            Some(("pve-ct01".into(), 22, "root".into()))
+        );
+        assert_eq!(
+            parse_ssh_quick_connect("ssh://admin@10.0.0.7:2222/"),
+            Some(("10.0.0.7".into(), 2222, "admin".into()))
+        );
+        // Port 22 genügt als Hinweis auf SSH
+        assert_eq!(
+            parse_ssh_quick_connect("root@srv:22"),
+            Some(("srv".into(), 22, "root".into()))
+        );
+        // Ohne Hinweis bleibt es RDP
+        assert_eq!(parse_ssh_quick_connect("srv01"), None);
+        assert_eq!(parse_ssh_quick_connect("srv01:3390"), None);
+        assert_eq!(parse_ssh_quick_connect("ssh "), None);
+    }
+
+    #[test]
+    fn protocol_switch_keeps_custom_values() {
+        let mut c = Connection::new("x", "h");
+        c.set_protocol(Protocol::Ssh);
+        assert_eq!((c.port, c.icon.as_str()), (22, "terminal"));
+        assert_eq!(c.known_host_key(), "ssh://h:22");
+        c.port = 2222;
+        c.icon = "server".into();
+        c.set_protocol(Protocol::Rdp);
+        assert_eq!((c.port, c.icon.as_str()), (2222, "server"));
+        // SSH mit Schlüssel verlangt eine Schlüsseldatei
+        let mut s = Connection::new_ssh("x", "h");
+        s.options.ssh.auth = SshAuth::KeyFile;
+        assert!(s.validate().is_err());
+        s.options.ssh.key_path = "C:\\Users\\me\\.ssh\\id_ed25519".into();
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn old_exports_default_to_rdp() {
+        let mut c = Connection::new_ssh("x", "h");
+        let mut json: serde_json::Value = serde_json::to_value(&c).unwrap();
+        json.as_object_mut().unwrap().remove("protocol");
+        let back: Connection = serde_json::from_value(json).unwrap();
+        assert_eq!(back.protocol, Protocol::Rdp);
+        c.protocol = Protocol::Ssh;
+        let back: Connection = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.protocol, Protocol::Ssh);
     }
 
     #[test]

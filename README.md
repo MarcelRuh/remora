@@ -1,11 +1,14 @@
-# Remora RDP Manager
+# Remora – Remote Connection Manager
 
-Moderner, nativer Remote-Desktop-Manager für Windows 10/11 – geschrieben in **Rust**, Oberfläche mit **Slint**, RDP-Protokoll mit **IronRDP**. Kein Electron, kein Browser-Frontend, kein `mstsc.exe`: Der Remote-Desktop wird direkt in der eigenen Oberfläche gerendert.
+Nativer Verbindungsmanager für **RDP und SSH** unter Windows 10/11 – geschrieben in **Rust**, Oberfläche mit **Slint**, RDP mit **IronRDP**, SSH mit **russh**. Kein Electron, kein Browser-Frontend, kein `mstsc.exe`, kein externes Terminal: Remote-Desktop und Terminal werden direkt in der eigenen Oberfläche dargestellt.
 
-* Verbindungsverwaltung mit Ordnern, Tags (Gruppen), Favoriten, Verlauf und Suche
-* Mehrere parallele Sitzungen in Tabs, Split-View (nebeneinander, übereinander, 2×2)
+Bis Version 0.2.x hieß das Programm „Remora RDP Manager“.
+
+* Verbindungsverwaltung mit Ordnern, Tags (Gruppen), Favoriten, Verlauf und Suche – RDP- und SSH-Verbindungen gemeinsam
+* Mehrere parallele Sitzungen in Tabs, Split-View (nebeneinander, übereinander, 2×2), auch gemischt
 * Echte RDP-Sitzungen: TLS, NLA/CredSSP, Grafik inkl. H.264, Maus, Tastatur (Scancodes), Zwischenablage, Audio, Laufwerke, Drucker, RD Gateway, dynamische Auflösung, Auto-Reconnect
-* Passwörter ausschließlich im Windows Credential Manager, TOFU-Zertifikatsprüfung, verschlüsselter Export mit Master-Passwort
+* SSH-Sitzungen mit eingebautem Terminal (xterm-256color, Truecolor, Maus für htop/mc, 10 000 Zeilen Verlauf, Auswahl und Zwischenablage); Anmeldung per Passwort (auch Keyboard-Interactive), Schlüsseldatei oder SSH-Agent (Windows-OpenSSH-Agent, Pageant); Hostschlüsselprüfung wie bei RDP-Zertifikaten
+* Passwörter und Schlüssel-Passphrasen ausschließlich im Windows Credential Manager, TOFU-Prüfung für Zertifikate und Hostschlüssel, verschlüsselter Export mit Master-Passwort
 * Gestaltung im Stil des **ora-Stacks** ([Proxora](https://github.com/MarcelRuh/proxora), Dockora, Sambora): fast schwarze Flächen, Pink als Akzent, Orbitron-Überschriften, Neon-Sechseck-Logo
 * Dark Mode (Standard), Light Mode, Systemdesign, frei wählbare Akzentfarbe
 * In das Design integrierte Titelleiste mit nativem Fensterverhalten (Ziehen, Aero Snap, Snap-Layouts am Maximieren-Button, Doppelklick, Systemmenü)
@@ -17,7 +20,7 @@ Moderner, nativer Remote-Desktop-Manager für Windows 10/11 – geschrieben in *
 
 `Remora-RDP-Setup-<Version>-x64.exe` ausführen. Der Installer
 
-* installiert nach `C:\Program Files\Remora RDP` (Administratorrechte erforderlich),
+* installiert nach `C:\Program Files\Remora` (Administratorrechte erforderlich; Updates bleiben im bisherigen Ordner, bis 0.2.x `C:\Program Files\Remora RDP`),
 * legt einen Startmenü-Eintrag und optional ein Desktop-Symbol an,
 * bietet Remora optional unter „Öffnen mit“ für `.rdp`-Dateien an (die Standardzuordnung zu `mstsc` bleibt unverändert; Remora lässt sich über „Öffnen mit → Immer“ selbst als Standard wählen),
 * registriert sich unter „Einstellungen → Apps“ zur Deinstallation.
@@ -34,7 +37,9 @@ Stille Installation: `Remora-RDP-Setup-<Version>-x64.exe /VERYSILENT /TASKS=rdpa
 
 ### Datenablage
 
-* `%APPDATA%\Remora\Remora RDP\data\remora.sqlite3` – Verbindungen, Ordner, vertraute Zertifikate
+Die Pfade und die Namen im Credential Manager behalten den bisherigen Namen, damit Verbindungen und gespeicherte Passwörter nach dem Update erhalten bleiben. Aus demselben Grund heißen die Release-Dateien weiter `Remora-RDP-…`.
+
+* `%APPDATA%\Remora\Remora RDP\data\remora.sqlite3` – Verbindungen, Ordner, vertraute Zertifikate und SSH-Hostschlüssel
 * `%APPDATA%\Remora\Remora RDP\config\settings.toml` – Einstellungen
 * `%LOCALAPPDATA%\Remora\Remora RDP\data\logs\` – Protokolle (ohne Zugangsdaten)
 
@@ -42,7 +47,7 @@ Stille Installation: `Remora-RDP-Setup-<Version>-x64.exe /VERYSILENT /TASKS=rdpa
 
 Voraussetzungen:
 
-* Rust ≥ 1.88 (Edition 2024), Toolchain `x86_64-pc-windows-msvc`
+* Rust ≥ 1.89 (Edition 2024), Toolchain `x86_64-pc-windows-msvc`
 * Visual Studio 2022 Build Tools mit „Desktopentwicklung mit C++“ (MSVC + Windows SDK; `rc.exe` bettet Symbol und Versionsinfo ein)
 * Internetzugang für Cargo (IronRDP wird als Git-Abhängigkeit auf einen festen Commit gepinnt)
 * CMake im `PATH` (für den Opus-Codec der Audio-Umleitung). Die VS Build Tools bringen CMake mit:
@@ -89,7 +94,10 @@ Standard-Titelleiste von Windows statt der integrierten: `REMORA_NATIVE_TITLEBAR
 |---|---|
 | Verbindung anlegen | „Neue Verbindung“ unten in der Sidebar, `Strg+N`, oder Kontextmenü eines Ordners |
 | Verbinden | Doppelklick, Kontextmenü, Dashboard-Karte, oder Eintrag in einen Split-Bereich ziehen |
-| Schnellverbindung | `Strg+T`, dann z. B. `server01`, `10.0.0.5:3390`, `DOMÄNE\admin@host` |
+| Schnellverbindung | `Strg+T`, dann z. B. `server01`, `10.0.0.5:3390`, `DOMÄNE\admin@host` (RDP) oder `ssh root@ct101`, `ssh://admin@host:2222`, `root@host:22` (SSH) |
+| SSH-Verbindung anlegen | Im Editor oben „SSH – Terminal“ wählen; unter „Anmeldung“ Passwort, Schlüsseldatei oder SSH-Agent |
+| Terminal: kopieren / einfügen | Text mit der Maus markieren (Doppelklick: Wort, Dreifachklick: Zeile), dann Rechtsklick oder `Strg+Umschalt+C`; Rechtsklick ohne Auswahl oder `Strg+Umschalt+V` fügt ein. In Programmen mit Mausbedienung (htop, mc) mit gedrückter `Umschalt`-Taste markieren |
+| Terminal: Verlauf | Mausrad oder `Umschalt+Bild↑/↓`; Tippen springt ans Ende |
 | Sortieren / Gruppieren | Sortiersymbol in der Sidebar (Ordner ↔ Name), Tags als `#tag` in der Suche oder per Chip |
 | Split-View | Layout-Schalter rechts in der Tab-Leiste; Tabs in Bereiche ziehen; Trennlinien verschieben; Doppelklick auf Bereichskopf maximiert |
 | Tastatur an die Sitzung | In die Remote-Anzeige klicken. Freigeben: `Strg+Alt+Pos1` |
@@ -111,6 +119,8 @@ src/
   core/                   ConnectionManager, SessionManager, EventBus
   rdp/                    Traits, IronRDP-Backend (client.rs), Sitzung (session.rs),
                           Renderer, Eingabe, Zwischenablage
+  ssh/                    SSH-Backend (russh), Sitzung, Terminal (alacritty_terminal),
+                          Schriftrasterung (Windows-Schriften)
   database/               Modelle, Migrationen, Repository (SQLite)
   security/               Credential Manager, Zertifikate (TOFU), Vault
   settings/               Einstellungen, Autostart
@@ -121,7 +131,7 @@ ui/
   components/ pages/ dialogs/ themes/ icons/
 installer/                Inno-Setup-Skript und Build-Skript
 examples/make_icon.rs     Erzeugt das Programmsymbol
-tests/                    Integrationstests (SQLite-Datei, Credential Manager, Live-RDP)
+tests/                    Integrationstests (SQLite-Datei, Credential Manager, Live-RDP, Live-SSH)
 docs/                     ARCHITECTURE.md, LIMITATIONS.md
 ```
 
@@ -136,7 +146,7 @@ Stand der Prüfungen auf Windows 11 Pro x64 (Rust 1.99.1, MSVC 2022):
 | `cargo build` / `cargo build --release` | erfolgreich |
 | `cargo fmt --all -- --check` | sauber |
 | `cargo clippy --all-targets -- -D warnings` | keine Warnungen |
-| `cargo test` | 71 Tests bestanden (Datenbank, Ordnerlogik, Suche/Baum, Sitzungs-/Split-Verwaltung, Renderer/Double-Buffer, Maus-Mapping, Tastatur-Entscheidungen, Titelleisten-Trefferlogik, `.rdp`-Import/Export, Vault, TOFU, Einstellungen, IronRDP-Konfiguration) |
+| `cargo test` | 100 Tests bestanden (91 Unit-Tests, 8 Datenbank-Integrationstests, 1 Credential Manager), u. a. Terminal-Darstellung, xterm-Tastenfolgen, Auswahl, Mausberichte, Schriftrasterung, Protokollwahl, Migration auf Schema 2 (Datenbank, Ordnerlogik, Suche/Baum, Sitzungs-/Split-Verwaltung, Renderer/Double-Buffer, Maus-Mapping, Tastatur-Entscheidungen, Titelleisten-Trefferlogik, `.rdp`-Import/Export, Vault, TOFU, Einstellungen, IronRDP-Konfiguration) |
 | Echter Windows Credential Manager | Testeintrag schreiben/lesen/löschen (`tests/windows_credentials.rs`) |
 | **Live gegen Windows-RDP-Dienst** (127.0.0.2) | `cargo test --test live_rdp -- --ignored`: TCP, X.224-Aushandlung, TLS, Zertifikatsabfrage (SHA-256, TOFU), CredSSP/NLA bis zur Serverantwort `STATUS_LOGON_FAILURE` (bewusst mit nicht existierendem Konto) |
 | Oberfläche | App gestartet; Dashboard, Editor, Anmeldedialog, Fehlerüberlagerung, 2×2-Split und Einstellungen per Screenshot geprüft |
@@ -144,6 +154,7 @@ Stand der Prüfungen auf Windows 11 Pro x64 (Rust 1.99.1, MSVC 2022):
 | Design (ora-Stack) | Dashboard, Einstellungen (Allgemein, Darstellung, Über), Dunkel und Hell per Screenshot geprüft; Logo-Vorlage als Emblem in Sidebar und Fenstersymbol, vollständiges Logo unter „Über“, Programmsymbol in EXE und Setup (16–256 px aus der Vorlage); alter Standard-Akzent `#4c8dff` wird beim Laden auf `#ff006e` umgestellt (Test) |
 | Einzelinstanz | Zweiter Start ohne Datei holt das Fenster nach vorn, zweiter Start mit relativer `.rdp`-Datei übergibt sie an die laufende Instanz (Import, Anmeldedialog); geprüft mit portabler Kopie |
 | Update-Prüfung | Automatisch nach dem Start und per „Jetzt prüfen“ gegen die GitHub-API (ohne Release: „Remora ist aktuell“); Bewertung von Versionen, Vorabversionen und fremden URLs per Test ; Auswahl von Setup und Prüfsummenliste aus den Release-Dateien, Abweisen fremder Download-Adressen und Prüfsummen-Auswertung per Test. Download und Installation über ein echtes Release noch offen |
+| **SSH gegen Test-Server** (russh-Server, 127.0.0.1) | `cargo test --test live_ssh -- --ignored`: Hostschlüssel-Rückfrage, Speichern und Wiedererkennen, Ablehnung bricht vor der Anmeldung ab, Passwort und Keyboard-Interactive, falsches Passwort, PTY `xterm-256color`, Eingaben, Größenänderung, Einfügen, `exit`. In der App: Schnellverbindung, Anmelde- und Hostschlüsseldialog, echte Tastendrücke mit deutschem Layout (AltGr+Q → `@`, `ä`, Umschalt+7, Pfeile, F5, Strg+C, Umschalt+Tab), Verlauf per Mausrad, Markieren und Kopieren per Rechtsklick, Einfügen per Strg+Umschalt+V und Rechtsklick, Größenänderung, Sitzungsende. **Nicht** gegen OpenSSH bzw. einen echten Linux-Server oder Proxmox-Container geprüft |
 | Installer | Stille Installation nach `C:\Program Files\Remora RDP`, Startmenü-Verknüpfung, Uninstall-Eintrag, `.rdp`-„Öffnen mit“, Start der installierten EXE; stille Deinstallation entfernt Ordner, Verknüpfung, Dateizuordnung und Uninstall-Eintrag, Benutzerdaten bleiben erhalten |
 
 **Noch nicht verifiziert:** eine vollständig angemeldete Sitzung (Bilddarstellung, Eingaben, Zwischenablage, Audio, dynamische Auflösung, Laufwerke/Drucker, Gateway). Eine erfolgreiche Anmeldung an `127.0.0.2` mit dem eigenen Konto würde auf Windows 10/11 Pro die laufende Sitzung übernehmen; für diese Tests wird ein separater RDP-Server (VM, Windows Server) empfohlen. Die Titelleiste ist nur bei 100 % Skalierung und auf Windows 11 geprüft (nicht: Windows 10, andere DPI-Stufen, Mehrschirm mit gemischter Skalierung).

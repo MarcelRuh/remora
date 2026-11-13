@@ -315,6 +315,25 @@ export component SettingsPage inherits Rectangle {
                             }
                         }
                     }
+                    SettingGroup {
+                        title: "SSH-Terminal";
+                        description: "Kopieren: Text markieren und Rechtsklick oder Strg+Umschalt+C. Einfügen: Rechtsklick ohne Auswahl oder Strg+Umschalt+V. Umschalt+Bild↑/↓ blättert im Verlauf, Umschalt+Maus markiert auch in Programmen wie htop oder mc.";
+                        HorizontalLayout {
+                            spacing: 12px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text { text: "Schriftgröße (gilt für neue Sitzungen)"; color: Theme.text; font-size: Theme.font-md; }
+                            }
+                            SpinBox {
+                                width: 120px;
+                                minimum: 8;
+                                maximum: 32;
+                                value <=> s.terminal-font-size;
+                                edited => { commit(); }
+                            }
+                        }
+                    }
                 }
 
                 // ---------------------------------------- Sicherheit
@@ -461,8 +480,8 @@ export component SettingsPage inherits Rectangle {
                         VerticalLayout {
                             alignment: center;
                             spacing: 4px;
-                            Text { text: "Remora RDP"; color: Theme.text; font-family: Theme.font-display; font-size: Theme.font-xl; font-weight: 800; letter-spacing: 1px; }
-                            Text { text: "Remote Desktop Manager · Teil des ora-Stacks (Proxora, Dockora, Sambora)"; color: Theme.text-muted; font-size: Theme.font-sm; }
+                            Text { text: "Remora"; color: Theme.text; font-family: Theme.font-display; font-size: Theme.font-xl; font-weight: 800; letter-spacing: 1px; }
+                            Text { text: "Remote Connection Manager für RDP und SSH · Teil des ora-Stacks (Proxora, Dockora, Sambora)"; color: Theme.text-muted; font-size: Theme.font-sm; }
                             Text { text: "Version " + Bridge.version; color: Theme.text-muted; font-size: Theme.font-md; }
                         }
                     }

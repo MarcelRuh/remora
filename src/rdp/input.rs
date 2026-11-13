@@ -48,6 +48,43 @@ pub enum InputEvent {
     },
     /// Strg+Alt+Entf an die Remote-Sitzung (lokal nicht abfangbar).
     CtrlAltDel,
+    /// Eingegebenes Zeichen (Terminal-Sitzungen). Windows hat Tastaturlayout, Tottasten und
+    /// AltGr bereits aufgelöst; Strg+Buchstabe kommt als Steuerzeichen.
+    Char {
+        ch: char,
+        alt: bool,
+    },
+    /// Taste ohne Zeichen (Terminal-Sitzungen), z. B. Pfeile oder F-Tasten.
+    TermKey {
+        key: TermKey,
+        mods: KeyMods,
+    },
+}
+
+/// Tasten ohne Zeichen, die ein Terminal als Escape-Folge sendet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TermKey {
+    Up,
+    Down,
+    Left,
+    Right,
+    Home,
+    End,
+    PageUp,
+    PageDown,
+    Insert,
+    Delete,
+    /// F1 bis F12.
+    F(u8),
+    /// Umschalt+Tab.
+    BackTab,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct KeyMods {
+    pub shift: bool,
+    pub alt: bool,
+    pub ctrl: bool,
 }
 
 /// Rechteck des Remote-Bildes innerhalb der Anzeigefläche (logische Pixel).

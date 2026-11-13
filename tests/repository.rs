@@ -139,3 +139,55 @@ fn rusqlite_check(path: &std::path::Path) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+#[test]
+fn ssh_connections_round_trip() {
+    use remora::database::{Protocol, SshAuth};
+    let (_dir, db) = temp_db();
+    let mut c = Connection::new_ssh("CT 101", "10.0.0.101");
+    c.username = "root".into();
+    c.options.ssh.auth = SshAuth::KeyFile;
+    c.options.ssh.key_path = r"C:\Users\me\.ssh\id_ed25519".into();
+    let id = db.insert_connection(&c).unwrap();
+    let back = db.get_connection(id).unwrap();
+    assert_eq!(back.protocol, Protocol::Ssh);
+    assert_eq!(back.port, 22);
+    assert_eq!(back.options.ssh, c.options.ssh);
+    // Protokollwechsel wird gespeichert
+    let mut changed = back.clone();
+    changed.set_protocol(Protocol::Rdp);
+    db.update_connection(&changed).unwrap();
+    let again = db.get_connection(id).unwrap();
+    assert_eq!((again.protocol, again.port), (Protocol::Rdp, 3389));
+}
+
+#[test]
+fn version_1_database_is_migrated() {
+    // Datenbank im Schema von 0.2.x (ohne Protokollspalte) anlegen
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("alt.sqlite3");
+    {
+        let raw = rusqlite::Connection::open(&path).unwrap();
+        raw.execute_batch(
+            "CREATE TABLE folders (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+                 parent_id INTEGER, sort_order INTEGER NOT NULL DEFAULT 0, expanded INTEGER NOT NULL DEFAULT 1);
+             CREATE TABLE connections (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, host TEXT NOT NULL,
+                 port INTEGER NOT NULL DEFAULT 3389, username TEXT NOT NULL DEFAULT '', domain TEXT NOT NULL DEFAULT '',
+                 description TEXT NOT NULL DEFAULT '', folder_id INTEGER, tags TEXT NOT NULL DEFAULT '[]',
+                 color TEXT NOT NULL DEFAULT '#4c8dff', icon TEXT NOT NULL DEFAULT 'monitor',
+                 favorite INTEGER NOT NULL DEFAULT 0, options TEXT NOT NULL DEFAULT '{}',
+                 sort_order INTEGER NOT NULL DEFAULT 0, last_used TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+             CREATE TABLE known_hosts (endpoint TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+                 first_seen TEXT NOT NULL, last_seen TEXT NOT NULL);
+             INSERT INTO connections (name, host, created_at, updated_at)
+                 VALUES ('DC01', 'dc01', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+    }
+    let db = Database::open(&path).unwrap();
+    let all = db.list_connections().unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].protocol, remora::database::Protocol::Rdp);
+    assert_eq!(all[0].port, 3389);
+}

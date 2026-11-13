@@ -85,6 +85,11 @@ impl Framebuffer {
         &self.pixels
     }
 
+    /// Direkter Zugriff für lokal gezeichnete Inhalte (Terminal).
+    pub fn pixels_mut(&mut self) -> &mut [u32] {
+        &mut self.pixels
+    }
+
     /// Passt die Größe an. Gibt `true` zurück, wenn sie sich geändert hat.
     pub fn ensure_size(&mut self, width: u16, height: u16) -> bool {
         if self.width == width && self.height == height {

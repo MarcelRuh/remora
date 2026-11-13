@@ -57,6 +57,7 @@ fn run(decision: CertDecision) -> (bool, SessionState) {
         scale_factor: 100,
         connect_timeout: Duration::from_secs(15),
         auto_reconnect_attempts: 0,
+        terminal_font_size: 14.0,
     };
     let session = backend.connect(req, sink).expect("Sitzung startet");
 

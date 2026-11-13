@@ -32,6 +32,18 @@ pub fn fingerprint(der: &[u8]) -> String {
     out
 }
 
+/// Fingerabdruck im OpenSSH-Format (`SHA256:…`, Base64 ohne Auffüllung), wie ihn
+/// `ssh-keygen -lf` anzeigt. Eingabe ist das Format von [`fingerprint`].
+pub fn openssh_fingerprint(hex: &str) -> Option<String> {
+    use base64::Engine as _;
+    let bytes: Option<Vec<u8>> = hex.split(':').map(|b| u8::from_str_radix(b, 16).ok()).collect();
+    let bytes = bytes.filter(|b| b.len() == 32)?;
+    Some(format!(
+        "SHA256:{}",
+        base64::engine::general_purpose::STANDARD_NO_PAD.encode(bytes)
+    ))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrustState {
     Trusted,
@@ -165,6 +177,19 @@ mod tests {
         let fp = fingerprint(b"abc");
         assert_eq!(fp.len(), 32 * 3 - 1);
         assert!(fp.starts_with("BA:78:16:BF"));
+    }
+
+    #[test]
+    fn openssh_format_matches_ssh_keygen() {
+        let key = russh::keys::load_secret_key(
+            format!("{}/tests/fixtures/ssh_ed25519_plain", env!("CARGO_MANIFEST_DIR")),
+            None,
+        )
+        .unwrap();
+        let public = key.public_key();
+        let ours = openssh_fingerprint(&fingerprint(&public.to_bytes().unwrap())).unwrap();
+        assert_eq!(ours, public.fingerprint(russh::keys::HashAlg::Sha256).to_string());
+        assert_eq!(openssh_fingerprint("AB:CD"), None);
     }
 
     #[test]

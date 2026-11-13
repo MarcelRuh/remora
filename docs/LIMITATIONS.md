@@ -1,6 +1,6 @@
 # Bekannte Einschränkungen
 
-Stand: Version 0.1.0. Die Tabelle unterscheidet zwischen **vollständig**, **teilweise** und **nicht** umgesetzten Funktionen. Der Teststatus steht in der README.
+Stand: Version 0.3.0. Die Tabelle unterscheidet zwischen **vollständig**, **teilweise** und **nicht** umgesetzten Funktionen. Der Teststatus steht in der README.
 
 ## RDP (IronRDP)
 
@@ -23,6 +23,21 @@ Stand: Version 0.1.0. Die Tabelle unterscheidet zwischen **vollständig**, **tei
 | Mehrere Monitore | nicht | Eine Sitzung = eine Fläche. |
 | Smartcard-Anmeldung, Remote Credential Guard | nicht | IronRDP unterstützt Teile davon, die UI nicht. |
 | RemoteApp (RAIL) | nicht | |
+
+## SSH (russh, alacritty_terminal)
+
+| Funktion | Status | Anmerkung |
+|---|---|---|
+| Interaktive Shell mit PTY | vollständig | `xterm-256color`, Truecolor, Alternativbildschirm, Mausberichte (SGR/X10), Bracketed Paste, 10 000 Zeilen Verlauf. |
+| Hostschlüsselprüfung | vollständig | TOFU wie bei RDP-Zertifikaten (eigener Eintrag `ssh://host:port`); `~/.ssh/known_hosts` wird nicht gelesen oder geschrieben. Hostzertifikate (OpenSSH-CA) werden wie einfache Schlüssel behandelt. |
+| Anmeldung | teilweise | Passwort, Keyboard-Interactive (beantwortet verdeckte Abfragen mit dem Passwort; echte 2FA-Abfragen wie TOTP nicht), Schlüsseldatei, SSH-Agent (Windows-OpenSSH-Agent, Pageant). Keine Zertifikats-Anmeldung, kein GSSAPI/Kerberos. |
+| Darstellung | teilweise | Windows-Schriften Cascadia Mono bzw. Consolas, Ersatz aus Segoe UI Symbol. Kursiv wird normal, Fett durch Verdoppeln dargestellt; Emojis einfarbig bzw. als Ersatzzeichen; Unterstreichungsarten (doppelt, gewellt) als einfache Linie. Rahmenzeichen kommen aus der Schrift (keine eigene Zeichnung). |
+| Farbschema | teilweise | Festes dunkles Schema; Programme können Farben per OSC ändern. Kein Schema-Editor. |
+| Tastatur | vollständig (Windows) | Zeichen über `WM_CHAR` (Layout, AltGr, Tottasten), Sondertasten als xterm-Folgen. Kitty-Tastaturprotokoll nicht. Ziffernblock im Application-Keypad-Modus sendet Ziffern. |
+| Zwischenablage | vollständig (Text) | Markieren/Rechtsklick, Strg+Umschalt+C/V. Zugriff des Servers auf die Zwischenablage (OSC 52) wird bewusst ignoriert. |
+| Schriftgröße | teilweise | Einstellung gilt für neue Sitzungen; kein Zoom per Strg+Mausrad. |
+| Port-Weiterleitung, SFTP, Jump-Host, X11, Agent-Weiterleitung | nicht | |
+| Sitzung nach Abbruch | teilweise | Automatischer Neuaufbau wie bei RDP, die Shell startet dabei neu (laufende Programme nur mit tmux/screen erhalten). |
 
 ## Oberfläche
 

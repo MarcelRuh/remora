@@ -108,7 +108,7 @@ pub fn build_bundle(
         format: EXPORT_FORMAT.to_owned(),
         version: EXPORT_VERSION,
         exported_at: Utc::now(),
-        application: format!("Remora RDP Manager {}", env!("CARGO_PKG_VERSION")),
+        application: format!("Remora {}", env!("CARGO_PKG_VERSION")),
         folders,
         connections,
     })

@@ -4,6 +4,12 @@ Alle nennenswerten Änderungen an Remora (bis 0.2.x „Remora RDP“). Format na
 
 ## [Unreleased]
 
+## [0.3.1] – 2026-11-13
+
+### Behoben
+
+- Bilder (und Text), die kopiert wurden, während Remora das aktive Fenster war, kamen nicht in der RDP-Sitzung an, z. B. Screenshots mit Win+Umschalt+S oder einem Screenshot-Tool per Tastenkürzel. Die Zwischenablage von IronRDP meldet lokale Änderungen nur, solange Remora im Hintergrund ist; Remora reicht sie jetzt selbst an die Sitzungen weiter. Das betrifft auch Text, der im SSH-Terminal von Remora kopiert wird.
+
 ## [0.3.0] – 2026-11-13
 
 ### Hinzugefügt

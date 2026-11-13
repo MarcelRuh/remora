@@ -350,6 +350,8 @@ fn init_native_window(weak: slint::Weak<AppWindow>, attempt: u32) {
         ui.global::<Bridge>().set_custom_titlebar(installed);
     }
     keyboard::install(hwnd, |action| with_app(move |s| s.on_local_action(action)));
+    #[cfg(windows)]
+    crate::rdp::clipboard::install_local_change_relay(hwnd);
     let mut policy = None;
     with_app_sync(|s| policy = Some(s.settings.windows_keys));
     if let Some(p) = policy {

@@ -146,7 +146,7 @@ Stand der Prüfungen auf Windows 11 Pro x64 (Rust 1.99.1, MSVC 2022):
 | `cargo build` / `cargo build --release` | erfolgreich |
 | `cargo fmt --all -- --check` | sauber |
 | `cargo clippy --all-targets -- -D warnings` | keine Warnungen |
-| `cargo test` | 100 Tests bestanden (91 Unit-Tests, 8 Datenbank-Integrationstests, 1 Credential Manager), u. a. Terminal-Darstellung, xterm-Tastenfolgen, Auswahl, Mausberichte, Schriftrasterung, Protokollwahl, Migration auf Schema 2 (Datenbank, Ordnerlogik, Suche/Baum, Sitzungs-/Split-Verwaltung, Renderer/Double-Buffer, Maus-Mapping, Tastatur-Entscheidungen, Titelleisten-Trefferlogik, `.rdp`-Import/Export, Vault, TOFU, Einstellungen, IronRDP-Konfiguration) |
+| `cargo test` | 102 Tests bestanden (93 Unit-Tests, 8 Datenbank-Integrationstests, 1 Credential Manager), u. a. Terminal-Darstellung, xterm-Tastenfolgen, Auswahl, Mausberichte, Schriftrasterung, Protokollwahl, Weiterleitung lokaler Zwischenablage-Änderungen, Migration auf Schema 2 (Datenbank, Ordnerlogik, Suche/Baum, Sitzungs-/Split-Verwaltung, Renderer/Double-Buffer, Maus-Mapping, Tastatur-Entscheidungen, Titelleisten-Trefferlogik, `.rdp`-Import/Export, Vault, TOFU, Einstellungen, IronRDP-Konfiguration) |
 | Echter Windows Credential Manager | Testeintrag schreiben/lesen/löschen (`tests/windows_credentials.rs`) |
 | **Live gegen Windows-RDP-Dienst** (127.0.0.2) | `cargo test --test live_rdp -- --ignored`: TCP, X.224-Aushandlung, TLS, Zertifikatsabfrage (SHA-256, TOFU), CredSSP/NLA bis zur Serverantwort `STATUS_LOGON_FAILURE` (bewusst mit nicht existierendem Konto) |
 | Oberfläche | App gestartet; Dashboard, Editor, Anmeldedialog, Fehlerüberlagerung, 2×2-Split und Einstellungen per Screenshot geprüft |

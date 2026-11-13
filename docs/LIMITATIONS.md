@@ -1,6 +1,6 @@
 # Bekannte Einschränkungen
 
-Stand: Version 0.3.0. Die Tabelle unterscheidet zwischen **vollständig**, **teilweise** und **nicht** umgesetzten Funktionen. Der Teststatus steht in der README.
+Stand: Version 0.3.1. Die Tabelle unterscheidet zwischen **vollständig**, **teilweise** und **nicht** umgesetzten Funktionen. Der Teststatus steht in der README.
 
 ## RDP (IronRDP)
 
@@ -13,7 +13,7 @@ Stand: Version 0.3.0. Die Tabelle unterscheidet zwischen **vollständig**, **tei
 | Tastatur (Scancodes) | vollständig (Windows) | Über die Tastennachrichten des Fensters; zusätzlich ein Low-Level-Hook für Systemkombinationen (Win, Alt+Tab). Wird der Hook von Windows nicht aufgerufen, bleiben diese lokal. **Pause/Untbr** wird nicht gesendet (benötigt eine Sonderfolge, die `ironrdp-input` nicht abbildet). |
 | Strg+Alt+Entf | teilweise | Lokal nicht abfangbar (Windows SAS). Ersatz: Strg+Alt+Ende oder Tab-Kontextmenü. |
 | IME/Unicode-Eingabe | nicht | Komposition asiatischer Eingabemethoden wird nicht übertragen (nur Scancodes). |
-| Zwischenablage | teilweise | Text und Bilder in beide Richtungen. **Dateien** kopieren ist deaktiviert, da die Stream-Behandlung durch die einbettende Anwendung erfolgen muss. |
+| Zwischenablage | teilweise | Text und Bilder in beide Richtungen (geprüft mit einem IronRDP-Testserver bis 3840×2160, noch nicht mit einem Windows-Server). **Dateien** kopieren ist deaktiviert, da die Stream-Behandlung durch die einbettende Anwendung erfolgen muss. |
 | Audio-Wiedergabe | vollständig | RDPSND über cpal/WASAPI (Feature `sound`, Standard). Mikrofon-Umleitung nicht in der UI. |
 | Drucker | teilweise | Standarddrucker per RDPDR (IronRDP-Backend). Auswahl einzelner Drucker nicht in der UI. |
 | Laufwerke | teilweise | Alle lokalen Laufwerke inkl. Hotplug-Auswahl beim Verbindungsstart; Auswahl einzelner Laufwerke nicht in der UI. |

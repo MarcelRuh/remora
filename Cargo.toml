@@ -1,6 +1,6 @@
 [package]
 name = "remora"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.89"
 description = "Remote Connection Manager für RDP und SSH mit nativer Slint-Oberfläche (IronRDP, russh)"

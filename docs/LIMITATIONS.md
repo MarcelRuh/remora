@@ -1,6 +1,6 @@
 # Bekannte Einschränkungen
 
-Stand: Version 0.3.1. Die Tabelle unterscheidet zwischen **vollständig**, **teilweise** und **nicht** umgesetzten Funktionen. Der Teststatus steht in der README.
+Stand: Version 0.3.2. Die Tabelle unterscheidet zwischen **vollständig**, **teilweise** und **nicht** umgesetzten Funktionen. Der Teststatus steht in der README.
 
 ## RDP (IronRDP)
 

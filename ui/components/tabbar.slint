@@ -30,6 +30,77 @@ component SessionTab inherits Rectangle {
         border-radius: 1px;
     }
 
+    ta := TouchArea {
+        mouse-cursor: dragging ? MouseCursor.grabbing : MouseCursor.default;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                Bridge.activate-tab(index);
+            }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.middle {
+                Bridge.close-tab(index);
+            }
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && dragging {
+                dragging = false;
+                root.drag-end(index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+            if e.kind == PointerEventKind.cancel {
+                dragging = false;
+            }
+        }
+        moved => {
+            if self.pressed && !dragging && (Math.abs(self.mouse-x - self.pressed-x) > 6px || Math.abs(self.mouse-y - self.pressed-y) > 6px) {
+                dragging = true;
+            }
+            if dragging {
+                root.drag-move(index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 4px;
+            spacing: 8px;
+            Rectangle {
+                width: 16px;
+                Image {
+                    source: Icons.for-name(tab.icon);
+                    width: 15px;
+                    height: 15px;
+                    colorize: selected ? tab.color : Theme.text-muted;
+                }
+                Rectangle {
+                    x: 10px;
+                    y: parent.height / 2 + 1px;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: selected ? Theme.surface-raised : Theme.surface;
+                    StatusDot {
+                        status: tab.status;
+                        size: 6px;
+                    }
+                }
+            }
+            Text {
+                text: tab.name;
+                color: selected ? Theme.text : Theme.text-muted;
+                font-size: Theme.font-md;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            IconButton {
+                size: 22px;
+                icon-size: 12px;
+                icon: Icons.x;
+                y: (parent.height - self.height) / 2;
+                opacity: (selected || ta.has-hover) ? 1 : 0;
+                tooltip: "Schließen (Strg+W)";
+                clicked => { Bridge.close-tab(index); }
+            }
+        }
+    }
+    // Liegt über dem Inhalt: sieht Rechtsklicks vor der TouchArea, die sonst jeden Klick annimmt.
     ContextMenuArea {
         Menu {
             MenuItem {
@@ -47,77 +118,6 @@ component SessionTab inherits Rectangle {
             MenuItem {
                 title: "Tab schließen";
                 activated => { Bridge.close-tab(index); }
-            }
-        }
-
-        ta := TouchArea {
-            mouse-cursor: dragging ? MouseCursor.grabbing : MouseCursor.default;
-            pointer-event(e) => {
-                if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
-                    Bridge.activate-tab(index);
-                }
-                if e.kind == PointerEventKind.up && e.button == PointerEventButton.middle {
-                    Bridge.close-tab(index);
-                }
-                if e.kind == PointerEventKind.up && e.button == PointerEventButton.left && dragging {
-                    dragging = false;
-                    root.drag-end(index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
-                }
-                if e.kind == PointerEventKind.cancel {
-                    dragging = false;
-                }
-            }
-            moved => {
-                if self.pressed && !dragging && (Math.abs(self.mouse-x - self.pressed-x) > 6px || Math.abs(self.mouse-y - self.pressed-y) > 6px) {
-                    dragging = true;
-                }
-                if dragging {
-                    root.drag-move(index, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
-                }
-            }
-
-            HorizontalLayout {
-                padding-left: 10px;
-                padding-right: 4px;
-                spacing: 8px;
-                Rectangle {
-                    width: 16px;
-                    Image {
-                        source: Icons.for-name(tab.icon);
-                        width: 15px;
-                        height: 15px;
-                        colorize: selected ? tab.color : Theme.text-muted;
-                    }
-                    Rectangle {
-                        x: 10px;
-                        y: parent.height / 2 + 1px;
-                        width: 8px;
-                        height: 8px;
-                        border-radius: 4px;
-                        background: selected ? Theme.surface-raised : Theme.surface;
-                        StatusDot {
-                            status: tab.status;
-                            size: 6px;
-                        }
-                    }
-                }
-                Text {
-                    text: tab.name;
-                    color: selected ? Theme.text : Theme.text-muted;
-                    font-size: Theme.font-md;
-                    vertical-alignment: center;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                }
-                IconButton {
-                    size: 22px;
-                    icon-size: 12px;
-                    icon: Icons.x;
-                    y: (parent.height - self.height) / 2;
-                    opacity: (selected || ta.has-hover) ? 1 : 0;
-                    tooltip: "Schließen (Strg+W)";
-                    clicked => { Bridge.close-tab(index); }
-                }
             }
         }
     }

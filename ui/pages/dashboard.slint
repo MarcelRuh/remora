@@ -81,6 +81,52 @@ component DashCard inherits Rectangle {
     drop-shadow-color: Theme.dark ? #00000060 : #8338ec22;
     animate drop-shadow-blur { duration: Theme.normal; }
 
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { Bridge.connect(card.id); }
+        HorizontalLayout {
+            padding: 14px;
+            spacing: 12px;
+            Rectangle {
+                width: 36px;
+                ConnectionIcon { icon: card.icon; tint: card.color; size: 36px; }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
+                horizontal-stretch: 1;
+                Text {
+                    text: card.name;
+                    color: Theme.text;
+                    font-size: Theme.font-md;
+                    font-weight: 600;
+                    overflow: elide;
+                }
+                Text {
+                    text: card.subtitle;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-sm;
+                    overflow: elide;
+                }
+                if card.last-used != "" : Text {
+                    text: card.last-used;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-xs;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                if card.status >= 0 : StatusDot { status: card.status; size: 8px; }
+                if card.status < 0 && card.favorite : Image {
+                    source: Icons.star;
+                    width: 13px;
+                    height: 13px;
+                    colorize: Theme.warning;
+                }
+            }
+        }
+    }
+    // Liegt über dem Inhalt: sieht Rechtsklicks vor der TouchArea, die sonst jeden Klick annimmt.
     ContextMenuArea {
         Menu {
             MenuItem {
@@ -95,50 +141,9 @@ component DashCard inherits Rectangle {
                 title: card.favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen";
                 activated => { Bridge.toggle-favorite(card.id); }
             }
-        }
-        ta := TouchArea {
-            mouse-cursor: pointer;
-            clicked => { Bridge.connect(card.id); }
-            HorizontalLayout {
-                padding: 14px;
-                spacing: 12px;
-                Rectangle {
-                    width: 36px;
-                    ConnectionIcon { icon: card.icon; tint: card.color; size: 36px; }
-                }
-                VerticalLayout {
-                    alignment: center;
-                    spacing: 3px;
-                    horizontal-stretch: 1;
-                    Text {
-                        text: card.name;
-                        color: Theme.text;
-                        font-size: Theme.font-md;
-                        font-weight: 600;
-                        overflow: elide;
-                    }
-                    Text {
-                        text: card.subtitle;
-                        color: Theme.text-muted;
-                        font-size: Theme.font-sm;
-                        overflow: elide;
-                    }
-                    if card.last-used != "" : Text {
-                        text: card.last-used;
-                        color: Theme.text-faint;
-                        font-size: Theme.font-xs;
-                    }
-                }
-                VerticalLayout {
-                    alignment: center;
-                    if card.status >= 0 : StatusDot { status: card.status; size: 8px; }
-                    if card.status < 0 && card.favorite : Image {
-                        source: Icons.star;
-                        width: 13px;
-                        height: 13px;
-                        colorize: Theme.warning;
-                    }
-                }
+            MenuItem {
+                title: "Löschen";
+                activated => { Bridge.delete-connection(card.id); }
             }
         }
     }

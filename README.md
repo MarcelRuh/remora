@@ -94,6 +94,7 @@ Standard-Titelleiste von Windows statt der integrierten: `REMORA_NATIVE_TITLEBAR
 |---|---|
 | Verbindung anlegen | „Neue Verbindung“ unten in der Sidebar, `Strg+N`, oder Kontextmenü eines Ordners |
 | Verbinden | Doppelklick, Kontextmenü, Dashboard-Karte, oder Eintrag in einen Split-Bereich ziehen |
+| Bearbeiten, duplizieren, löschen | Rechtsklick auf die Verbindung im Baum, auf eine Dashboard-Karte oder in den Listen Favoriten / Zuletzt verwendet (dort ohne Duplizieren) |
 | Schnellverbindung | `Strg+T`, dann z. B. `server01`, `10.0.0.5:3390`, `DOMÄNE\admin@host` (RDP) oder `ssh root@ct101`, `ssh://admin@host:2222`, `root@host:22` (SSH) |
 | SSH-Verbindung anlegen | Im Editor oben „SSH – Terminal“ wählen; unter „Anmeldung“ Passwort, Schlüsseldatei oder SSH-Agent |
 | Terminal: kopieren / einfügen | Text mit der Maus markieren (Doppelklick: Wort, Dreifachklick: Zeile), dann Rechtsklick oder `Strg+Umschalt+C`; Rechtsklick ohne Auswahl oder `Strg+Umschalt+V` fügt ein. In Programmen mit Mausbedienung (htop, mc) mit gedrückter `Umschalt`-Taste markieren |

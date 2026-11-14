@@ -4,6 +4,16 @@ Alle nennenswerten Änderungen an Remora (bis 0.2.x „Remora RDP“). Format na
 
 ## [Unreleased]
 
+## [0.3.2] – 2026-11-14
+
+### Behoben
+
+- Rechtsklick-Menüs öffneten sich nicht (Verbindungsbaum, Dashboard-Karten, Favoriten / Zuletzt verwendet, Tabs). Damit ließen sich unter anderem Verbindungen nicht löschen. Die Klickfläche jeder Zeile nahm auch den Rechtsklick an, bevor das Kontextmenü ihn sah; das Menü liegt jetzt über dem Inhalt.
+
+### Hinzugefügt
+
+- „Löschen“ auch im Kontextmenü der Dashboard-Karten und der Listen Favoriten / Zuletzt verwendet.
+
 ## [0.3.1] – 2026-11-13
 
 ### Behoben
